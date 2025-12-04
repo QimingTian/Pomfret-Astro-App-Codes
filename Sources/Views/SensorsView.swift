@@ -94,6 +94,7 @@ private struct CombinedCameraSection: View {
     @State private var capturedGain: Int = 50
     @State private var capturedExposure: Double = 1.0
     @State private var showingPhotoViewer = false
+    @State private var streamRefreshID = UUID()  // Force stream refresh
     
     var body: some View {
         cameraCard(
@@ -107,7 +108,8 @@ private struct CombinedCameraSection: View {
             capturedImage: $capturedImage,
             capturedGain: $capturedGain,
             capturedExposure: $capturedExposure,
-            showingPhotoViewer: $showingPhotoViewer
+            showingPhotoViewer: $showingPhotoViewer,
+            streamRefreshID: $streamRefreshID
         )
         .sheet(isPresented: $showingPhotoViewer) {
             if let image = capturedImage {
@@ -118,7 +120,7 @@ private struct CombinedCameraSection: View {
 }
 
 @ViewBuilder
-private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>) -> some View {
+private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>) -> some View {
     let isControllerConnected = appState.connectedControllers.contains(controller.id)
     
     SensorsPanel(title: title, icon: "camera.fill") {
@@ -145,7 +147,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                         .frame(width: 40, alignment: .trailing)
                         .monospacedDigit()
                     Button("Set") {
-                        updateCameraSetting(controller: controller, gain: Int(gain.wrappedValue), appState: appState)
+                        updateCameraSetting(controller: controller, gain: Int(gain.wrappedValue), appState: appState, streamRefreshID: streamRefreshID)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -180,7 +182,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 .disabled(!isControllerConnected || !primaryCamera.streaming)
                 
                 Button(action: {
-                    capturePhoto(controller: controller, appState: appState, gain: gain, photoExposure: photoExposure, capturedImage: capturedImage, capturedGain: capturedGain, capturedExposure: capturedExposure, showingPhotoViewer: showingPhotoViewer)
+                    capturePhoto(controller: controller, appState: appState, gain: gain, photoExposure: photoExposure, capturedImage: capturedImage, capturedGain: capturedGain, capturedExposure: capturedExposure, showingPhotoViewer: showingPhotoViewer, streamRefreshID: streamRefreshID)
                 }) {
                     Label("Capture Photo", systemImage: "camera")
                 }
@@ -191,7 +193,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 ZStack {
                     MJPEGStreamView(url: "\(controller.baseURL)/camera/stream")
                         .frame(height: 500)
-                        .id("\(controller.id)-stream")  // Unique ID per controller
+                        .id(streamRefreshID)  // Force refresh when ID changes
                     
                     // LIVE 指示器
                     VStack {
@@ -259,7 +261,7 @@ private func stopStream(controller: ControllerState, appState: AppState) {
     }
 }
 
-private func capturePhoto(controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>) {
+private func capturePhoto(controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>) {
     Task {
         do {
             guard let apiClient = controller.apiClient else { return }
@@ -276,9 +278,14 @@ private func capturePhoto(controller: ControllerState, appState: AppState, gain:
                 }
                 appState.addLog(level: .info, module: "camera", message: "Photo captured: \(Int(image.size.width))×\(Int(image.size.height))", controller: controller)
                 
-                // Refresh status after photo capture to ensure streaming state is updated
-                try await Task.sleep(nanoseconds: 1_000_000_000) // Wait 1 second for stream to restart
+                // Refresh status and stream view after photo capture
+                try await Task.sleep(nanoseconds: 1_500_000_000) // Wait 1.5 seconds for stream to restart
                 controller.fetchStatus()
+                
+                // Force refresh stream view
+                await MainActor.run {
+                    streamRefreshID.wrappedValue = UUID()
+                }
             } else {
                 appState.addLog(level: .error, module: "camera", message: "Failed to decode photo", controller: controller)
             }
@@ -288,7 +295,7 @@ private func capturePhoto(controller: ControllerState, appState: AppState, gain:
     }
 }
 
-private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, photoExposure: Double? = nil, appState: AppState) {
+private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, photoExposure: Double? = nil, appState: AppState, streamRefreshID: Binding<UUID>? = nil) {
     Task {
         do {
             guard let apiClient = controller.apiClient else { 
@@ -313,10 +320,16 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
             if let g = gain {
                 appState.addLog(level: .info, module: "camera", message: "✓ Gain set to \(g)", controller: controller)
                 
-                // If was streaming, wait for stream to restart and refresh UI
+                // If was streaming, wait for stream to restart and force refresh stream view
                 if wasStreaming {
                     try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
                     controller.fetchStatus()
+                    
+                    // Force refresh stream view by changing its ID
+                    await MainActor.run {
+                        streamRefreshID?.wrappedValue = UUID()
+                    }
+                    
                     appState.addLog(level: .info, module: "camera", message: "Stream refreshed with new gain", controller: controller)
                 }
             }
