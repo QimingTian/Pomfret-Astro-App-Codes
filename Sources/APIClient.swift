@@ -115,13 +115,10 @@ class APIClient: NSObject {
         try await postEmpty("/camera/stream/stop")
     }
     
-    func updateCameraSettings(gain: Int? = nil, streamExposure: Int? = nil, photoExposure: Int? = nil) async throws {
+    func updateCameraSettings(gain: Int? = nil, photoExposure: Int? = nil) async throws {
         var params: [String: Any] = [:]
         if let gain = gain {
             params["gain"] = gain
-        }
-        if let streamExp = streamExposure {
-            params["stream_exposure"] = streamExp
         }
         if let photoExp = photoExposure {
             params["photo_exposure"] = photoExp

@@ -71,8 +71,7 @@ camera_state = {
     'camera_id': -1,
     'width': 1280,
     'height': 960,
-    'stream_exposure': 100000,  # microseconds - for video streaming (short for high FPS)
-    'photo_exposure': 1000000,  # microseconds - for photo capture (can be long for detail)
+    'exposure': 1000000,  # microseconds - for photo capture only (video mode uses auto exposure)
     'gain': 50,
     'current_frame': None,
     'error': None
@@ -174,22 +173,17 @@ class ASICamera:
             # Set bandwidth
             asi_lib.ASISetControlValue(self.camera_id, ASI_BANDWIDTHOVERLOAD, 40, ASI_FALSE)
             
-            # Now set manual gain and exposure values (use stream_exposure for video mode)
+            # Set initial gain
             result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, camera_state['gain'], ASI_FALSE)
-            result_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, camera_state['stream_exposure'], ASI_FALSE)
             
             # Verify settings
             actual_gain = ctypes.c_long(0)
-            actual_exp = ctypes.c_long(0)
             auto_gain = ctypes.c_int(0)
-            auto_exp = ctypes.c_int(0)
             asi_lib.ASIGetControlValue(self.camera_id, ASI_GAIN, ctypes.byref(actual_gain), ctypes.byref(auto_gain))
-            asi_lib.ASIGetControlValue(self.camera_id, ASI_EXPOSURE, ctypes.byref(actual_exp), ctypes.byref(auto_exp))
             
             print(f"Initial settings:")
             print(f"  Gain: {camera_state['gain']} → actual: {actual_gain.value} (result: {result_gain})")
-            print(f"  Stream Exposure: {camera_state['stream_exposure']} μs ({camera_state['stream_exposure']/1000000:.3f} s) → actual: {actual_exp.value} μs (result: {result_exp})")
-            print(f"  Photo Exposure: {camera_state['photo_exposure']} μs ({camera_state['photo_exposure']/1000000:.3f} s)")
+            print(f"  Exposure (for photo): {camera_state['exposure']} μs ({camera_state['exposure']/1000000:.3f} s)")
             
             camera_state['connected'] = True
             camera_state['error'] = None
@@ -214,10 +208,7 @@ class ASICamera:
         if not self.is_open:
             return False
         
-        # Set stream exposure before starting (short exposure for high FPS)
-        stream_exp = camera_state['stream_exposure']
-        result_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, stream_exp, ASI_FALSE)
-        print(f"[start_stream] Set stream exposure to {stream_exp} μs ({stream_exp/1000000:.3f} s) (result: {result_exp})")
+        print(f"[start_stream] Starting video capture (auto exposure)")
         
         result = asi_lib.ASIStartVideoCapture(self.camera_id)
         if result != ASI_SUCCESS:
@@ -297,14 +288,14 @@ class ASICamera:
                 asi_lib.ASIStopExposure(self.camera_id)
                 time.sleep(0.5)
         
-        # Set photo exposure before capturing (can be long for detail)
-        photo_exp = camera_state['photo_exposure']
+        # Set exposure before capturing (can be long for detail)
+        exposure = camera_state['exposure']
         gain_val = camera_state['gain']
         
-        result_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, photo_exp, ASI_FALSE)
+        result_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, exposure, ASI_FALSE)
         result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain_val, ASI_FALSE)
         
-        print(f"[capture_snapshot] Set photo exposure: {photo_exp} μs ({photo_exp/1000000:.3f} s) (result: {result_exp})")
+        print(f"[capture_snapshot] Set exposure: {exposure} μs ({exposure/1000000:.3f} s) (result: {result_exp})")
         print(f"[capture_snapshot] Set gain: {gain_val} (result: {result_gain})")
         print(f"[capture_snapshot] Camera is idle, starting exposure...")
         
@@ -317,7 +308,7 @@ class ASICamera:
         # Wait for exposure to complete
         status = ctypes.c_int(0)
         timeout = 0
-        max_timeout = (photo_exp // 1000) + 5000  # ms
+        max_timeout = (exposure // 1000) + 5000  # ms
         
         while timeout < max_timeout:
             asi_lib.ASIGetExpStatus(self.camera_id, ctypes.byref(status))
@@ -418,7 +409,7 @@ def snapshot():
             camera.stop_stream()
             time.sleep(0.5)
         
-        print(f"[Snapshot] Capturing with photo exposure: {camera_state['photo_exposure']} μs ({camera_state['photo_exposure']/1000000:.3f} s)")
+        print(f"[Snapshot] Capturing with exposure: {camera_state['exposure']} μs ({camera_state['exposure']/1000000:.3f} s)")
         img = camera.capture_snapshot()
         
         # Resume streaming if it was active
@@ -501,33 +492,19 @@ def update_settings():
                 success = camera.start_stream()
                 print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
     
-    if 'stream_exposure' in data:
-        stream_exposure_us = int(data['stream_exposure'])
-        camera_state['stream_exposure'] = stream_exposure_us
-        
-        # If currently streaming, apply immediately
-        if camera.is_open and camera.streaming:
-            result = asi_lib.ASISetControlValue(camera.camera_id, ASI_EXPOSURE, stream_exposure_us, ASI_FALSE)
-            print(f"[Settings] Set stream exposure to {stream_exposure_us} μs = {stream_exposure_us/1000000:.3f} s (result: {result})")
-        else:
-            print(f"[Settings] Saved stream exposure: {stream_exposure_us} μs = {stream_exposure_us/1000000:.3f} s (will apply on stream start)")
-        
-        updated.append(f"stream_exposure={stream_exposure_us}us")
-    
     if 'photo_exposure' in data:
-        photo_exposure_us = int(data['photo_exposure'])
-        camera_state['photo_exposure'] = photo_exposure_us
-        print(f"[Settings] Saved photo exposure: {photo_exposure_us} μs = {photo_exposure_us/1000000:.3f} s")
-        updated.append(f"photo_exposure={photo_exposure_us}us")
+        exposure_us = int(data['photo_exposure'])
+        camera_state['exposure'] = exposure_us
+        print(f"[Settings] Set exposure: {exposure_us} μs = {exposure_us/1000000:.3f} s")
+        updated.append(f"exposure={exposure_us}us")
     
     print(f"[Settings] Updated: {', '.join(updated) if updated else 'nothing'}")
-    print(f"[Settings] State now - Gain: {camera_state['gain']}, Stream Exposure: {camera_state['stream_exposure']} μs, Photo Exposure: {camera_state['photo_exposure']} μs")
+    print(f"[Settings] State now - Gain: {camera_state['gain']}, Exposure: {camera_state['exposure']} μs")
     
     return jsonify({
         'success': True,
         'gain': camera_state['gain'],
-        'stream_exposure': camera_state['stream_exposure'],
-        'photo_exposure': camera_state['photo_exposure']
+        'exposure': camera_state['exposure']
     })
 
 if __name__ == '__main__':
