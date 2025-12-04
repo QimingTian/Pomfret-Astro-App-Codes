@@ -2,6 +2,37 @@
 
 macOS application for controlling the Pomfret School VISTA Observatory, including roof control, environmental monitoring, and all-sky camera systems.
 
+## Version History
+
+### Version 1.1 (Current)
+**Release Date:** December 4, 2025
+
+**Major Features:**
+- ✅ **Remote Access via Cloudflare Tunnel** - Access observatory from anywhere with permanent URL `https://pomfret-obs.pomfretastro.org`
+- ✅ **Dual Exposure Controls** - Separate settings for video streaming (0.001-1s) and photo capture (0.001-10s)
+- ✅ **Settings Persistence** - Camera settings saved across app restarts
+- ✅ **HTTPS Support** - Full SSL/TLS certificate handling
+- ✅ **Improved Gain Control** - Automatic stream restart when adjusting gain
+
+**Technical Improvements:**
+- Info.plist configuration for App Transport Security
+- URLSession delegate for SSL certificate validation
+- Enhanced Python service with dual exposure state management
+- User-Agent headers for Cloudflare compatibility
+- Comprehensive error logging and debugging
+
+### Version 1.0
+**Release Date:** December 2, 2025
+
+**Initial Features:**
+- SwiftUI application for macOS 13.0+
+- ASI camera control (ZWO 120MC/676MC)
+- Real-time MJPEG video streaming
+- Camera settings adjustment (Gain, Exposure)
+- Photo capture functionality
+- Multi-controller architecture
+- Local network access
+
 ## System Architecture
 
 ### Components
@@ -49,19 +80,47 @@ python3 camera_service.py
 
 3. Service will run on `http://[MAC_MINI_IP]:8080`
 
+### Setting up Remote Access (Cloudflare Tunnel)
+
+For permanent remote access from anywhere:
+
+1. Install cloudflared on Mac Mini:
+```bash
+brew install cloudflare/cloudflare/cloudflared
+```
+
+2. Create and configure tunnel:
+   - Login to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
+   - Navigate to **Networks** → **Tunnels**
+   - Create a new tunnel, get the token
+   - Install on Mac Mini:
+```bash
+cloudflared service install <YOUR_TOKEN>
+```
+
+3. Configure Public Hostname:
+   - Add hostname in Cloudflare Dashboard
+   - Service: `http://localhost:8080`
+   - Your permanent URL: `https://pomfret-obs.pomfretastro.org`
+
+4. The tunnel service will auto-start on Mac Mini boot
+
 ### Adding Controllers
 
+**For Local Access (same network):**
 1. Go to **Settings** tab
 2. Click **Add Controller** or edit existing
 3. Configure:
-   - **Name**: Descriptive name
-   - **Base URL**: `http://[IP_ADDRESS]:8080`
-   - **Roles**: Select what this controller handles:
-     - Roof Control
-     - Side-wall Control
-     - Environment Sensors
-     - Cameras
+   - **Name**: Camera Service
+   - **Base URL**: `http://172.18.2.101:8080` (Mac Mini local IP)
+   - **Roles**: Check "Cameras" and "Environment Sensors"
 4. Click **Connect**
+
+**For Remote Access (from anywhere):**
+1. Use the permanent Cloudflare URL:
+   - **Base URL**: `https://pomfret-obs.pomfretastro.org`
+2. Same roles configuration as above
+3. Works from any internet connection
 
 ## Features
 
@@ -73,9 +132,11 @@ python3 camera_service.py
 
 ### Camera System
 - ASI 120MC / 676MC all-sky cameras
-- Real-time MJPEG video streaming
-- Snapshot capture
-- Adjustable exposure and gain
+- Real-time MJPEG video streaming with adjustable stream exposure (0.001-1s)
+- High-quality photo capture with separate exposure control (0.001-10s)
+- Adjustable gain (0-300, camera-dependent maximum)
+- Settings persist across sessions
+- Automatic stream restart when adjusting gain
 
 ### Environmental Monitoring
 - Temperature and humidity sensors
