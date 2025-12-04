@@ -73,7 +73,7 @@ camera_state = {
     'height': 960,
     'stream_exposure': 100000,  # microseconds - for video streaming (short for high FPS)
     'photo_exposure': 1000000,  # microseconds - for photo capture (can be long for detail)
-    'gain': 150,
+    'gain': 50,
     'current_frame': None,
     'error': None
 }

@@ -88,7 +88,7 @@ private struct EnvironmentSection: View {
 private struct CombinedCameraSection: View {
     @ObservedObject var controller: ControllerState
     @EnvironmentObject var appState: AppState
-    @AppStorage("camera.gain") private var gain: Double = 150
+    @AppStorage("camera.gain") private var gain: Double = 50
     @AppStorage("camera.streamExposure") private var exposure: Double = 0.1  // seconds - for stream
     @AppStorage("camera.photoExposure") private var photoExposure: Double = 1.0  // seconds - for photo capture
     @State private var capturedImage: NSImage?
@@ -138,7 +138,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 HStack {
                     Text("Gain:")
                         .frame(width: 80, alignment: .leading)
-                    Slider(value: gain, in: 0...300, step: 1)
+                    Slider(value: gain, in: 0...100, step: 1)
                     Text("\(Int(gain.wrappedValue))")
                         .frame(width: 40, alignment: .trailing)
                         .monospacedDigit()
