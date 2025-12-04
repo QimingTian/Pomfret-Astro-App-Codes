@@ -31,6 +31,24 @@ struct MJPEGStreamView: View {
                             .padding()
                     }
                 }
+                
+                // FPS indicator in top-left corner
+                if loader.currentImage != nil {
+                    VStack {
+                        HStack {
+                            Text(String(format: "%.1f FPS", loader.fps))
+                                .font(.caption)
+                                .fontWeight(.semibold)
+                                .foregroundColor(.white)
+                                .padding(6)
+                                .background(Color.black.opacity(0.7))
+                                .cornerRadius(4)
+                                .padding(8)
+                            Spacer()
+                        }
+                        Spacer()
+                    }
+                }
             }
         }
         .onAppear {
@@ -44,11 +62,15 @@ struct MJPEGStreamView: View {
 
 class MJPEGLoader: ObservableObject {
     @Published var currentImage: NSImage?
+    @Published var fps: Double = 0.0
     
     private var task: URLSessionDataTask?
     private var buffer = Data()
     private var delegate: StreamDelegate?
     private var session: URLSession?
+    private var frameCount: Int = 0
+    private var lastFPSUpdate: Date = Date()
+    private var lastFrameTime: Date?
     
     func startStreaming(url: String) {
         guard let streamURL = URL(string: url) else {
@@ -60,7 +82,21 @@ class MJPEGLoader: ObservableObject {
         
         delegate = StreamDelegate { [weak self] image in
             DispatchQueue.main.async {
-                self?.currentImage = image
+                guard let self = self else { return }
+                
+                self.currentImage = image
+                
+                // Calculate FPS
+                let now = Date()
+                self.frameCount += 1
+                
+                let timeSinceLastUpdate = now.timeIntervalSince(self.lastFPSUpdate)
+                if timeSinceLastUpdate >= 1.0 {
+                    // Update FPS every second
+                    self.fps = Double(self.frameCount) / timeSinceLastUpdate
+                    self.frameCount = 0
+                    self.lastFPSUpdate = now
+                }
             }
         }
         
@@ -85,6 +121,13 @@ class MJPEGLoader: ObservableObject {
         session = nil
         delegate = nil
         buffer.removeAll()
+        
+        // Reset FPS tracking
+        DispatchQueue.main.async { [weak self] in
+            self?.fps = 0.0
+            self?.frameCount = 0
+            self?.lastFPSUpdate = Date()
+        }
     }
     
     deinit {
