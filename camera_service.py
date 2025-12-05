@@ -71,7 +71,8 @@ camera_state = {
     'camera_id': -1,
     'width': 1280,
     'height': 960,
-    'exposure': 1000000,  # microseconds - for photo capture only (video mode uses auto exposure)
+    'exposure': 1000000,  # microseconds - for photo capture only
+    'video_exposure': 100000,  # microseconds - max exposure for video streaming (controls frame rate)
     'gain': 50,
     'current_frame': None,
     'error': None
@@ -208,10 +209,19 @@ class ASICamera:
         if not self.is_open:
             return False
         
-        # Set a reasonable exposure for video mode (100ms = 10 FPS max)
-        video_exposure = 100000  # 100ms
-        result_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, video_exposure, ASI_FALSE)
-        print(f"[start_stream] Set video exposure to {video_exposure} μs (0.1 s) (result: {result_exp})")
+        # Enable auto exposure for video mode, but limit max exposure time
+        # This allows the camera to adjust exposure automatically while respecting the max limit
+        video_exposure = camera_state['video_exposure']  # microseconds
+        
+        # Set ASI_AUTO_MAX_EXP to limit the maximum exposure time in video mode
+        # This controls the frame rate: shorter max exposure = higher frame rate
+        result_max_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_AUTO_MAX_EXP, video_exposure, ASI_FALSE)
+        
+        # Enable auto exposure for video mode
+        result_auto = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, 0, ASI_TRUE)
+        
+        print(f"[start_stream] Set video max exposure to {video_exposure} μs ({video_exposure/1000:.1f} ms)")
+        print(f"[start_stream] ASI_AUTO_MAX_EXP result: {result_max_exp}, Auto exposure result: {result_auto}")
         
         print(f"[start_stream] Starting video capture")
         
@@ -249,12 +259,18 @@ class ASICamera:
         consecutive_errors = 0
         
         while self.streaming and self.is_open:
+            # Calculate timeout based on video exposure time
+            # SDK recommends: exposure*2+500ms
+            video_exposure_ms = camera_state['video_exposure'] / 1000.0  # Convert to ms
+            timeout_ms = int(video_exposure_ms * 2 + 500)
+            timeout_ms = max(1000, min(timeout_ms, 5000))  # Clamp between 1s and 5s
+            
             drop_frames = ctypes.c_int(0)
             result = asi_lib.ASIGetVideoData(
                 self.camera_id,
                 ctypes.byref(buffer),
                 buffer_size,
-                2000,  # timeout in ms (increased from 1000)
+                timeout_ms,
                 ctypes.byref(drop_frames)
             )
             
@@ -279,6 +295,7 @@ class ASICamera:
     def capture_snapshot(self):
         """Capture a single snapshot"""
         if not self.is_open:
+            print("[capture_snapshot] Camera not open")
             return None
         
         # Wait for camera to be in IDLE state (in case previous exposure is still running)
@@ -312,7 +329,27 @@ class ASICamera:
         # Start exposure
         result = asi_lib.ASIStartExposure(self.camera_id, 0)  # 0 = not dark frame (ASI_FALSE)
         if result != ASI_SUCCESS:
-            print(f"[capture_snapshot] Failed to start exposure: {result}")
+            error_names = {
+                1: "ASI_ERROR_INVALID_INDEX",
+                2: "ASI_ERROR_INVALID_ID", 
+                3: "ASI_ERROR_INVALID_CONTROL_TYPE",
+                4: "ASI_ERROR_CAMERA_CLOSED",
+                5: "ASI_ERROR_CAMERA_REMOVED",
+                6: "ASI_ERROR_INVALID_PATH",
+                7: "ASI_ERROR_INVALID_FILEFORMAT",
+                8: "ASI_ERROR_INVALID_SIZE",
+                9: "ASI_ERROR_INVALID_IMGTYPE",
+                10: "ASI_ERROR_OUTOF_BOUNDARY",
+                11: "ASI_ERROR_TIMEOUT",
+                12: "ASI_ERROR_INVALID_SEQUENCE",
+                13: "ASI_ERROR_BUFFER_TOO_SMALL",
+                14: "ASI_ERROR_VIDEO_MODE_ACTIVE",
+                15: "ASI_ERROR_EXPOSURE_IN_PROGRESS",
+                16: "ASI_ERROR_GENERAL_ERROR",
+                17: "ASI_ERROR_INVALID_MODE"
+            }
+            error_name = error_names.get(result, f"UNKNOWN_ERROR_{result}")
+            print(f"[capture_snapshot] Failed to start exposure: {result} ({error_name})")
             return None
         
         # Wait for exposure to complete
@@ -328,7 +365,9 @@ class ASICamera:
             timeout += 100
         
         if status.value != 2:
-            print(f"Exposure failed with status: {status.value}")
+            status_names = {0: "ASI_EXP_IDLE", 1: "ASI_EXP_WORKING", 2: "ASI_EXP_SUCCESS", 3: "ASI_EXP_FAILED"}
+            status_name = status_names.get(status.value, f"UNKNOWN_{status.value}")
+            print(f"[capture_snapshot] Exposure failed with status: {status.value} ({status_name})")
             return None
         
         # Get image data
@@ -339,7 +378,18 @@ class ASICamera:
         
         result = asi_lib.ASIGetDataAfterExp(self.camera_id, ctypes.byref(buffer), buffer_size)
         if result != ASI_SUCCESS:
-            print(f"Failed to get image data: {result}")
+            error_names = {
+                1: "ASI_ERROR_INVALID_INDEX",
+                2: "ASI_ERROR_INVALID_ID", 
+                3: "ASI_ERROR_INVALID_CONTROL_TYPE",
+                4: "ASI_ERROR_CAMERA_CLOSED",
+                5: "ASI_ERROR_CAMERA_REMOVED",
+                11: "ASI_ERROR_TIMEOUT",
+                13: "ASI_ERROR_BUFFER_TOO_SMALL",
+                16: "ASI_ERROR_GENERAL_ERROR"
+            }
+            error_name = error_names.get(result, f"UNKNOWN_ERROR_{result}")
+            print(f"[capture_snapshot] Failed to get image data: {result} ({error_name})")
             return None
         
         # Convert to PIL Image
@@ -409,6 +459,12 @@ def snapshot():
     """Get a snapshot - automatically stops/resumes stream if needed"""
     print(f"[Snapshot] Request. Streaming: {camera_state['streaming']}")
     
+    # Check if camera is connected
+    if not camera_state['connected'] or not camera.is_open:
+        error_msg = "Camera not connected"
+        print(f"[Snapshot] Error: {error_msg}")
+        return jsonify({'error': error_msg}), 500
+    
     # Remember if we were streaming
     was_streaming = camera.streaming
     
@@ -435,13 +491,21 @@ def snapshot():
             print(f"[Snapshot] Success!")
             return send_file(img_io, mimetype='image/jpeg')
         else:
-            return jsonify({'error': 'Failed to capture snapshot'}), 500
+            error_msg = 'Failed to capture snapshot - camera returned None'
+            print(f"[Snapshot] Error: {error_msg}")
+            return jsonify({'error': error_msg}), 500
             
     except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
         print(f"[Snapshot] Exception: {e}")
+        print(f"[Snapshot] Traceback:\n{error_details}")
         if was_streaming and not camera.streaming:
-            camera.start_stream()
-        return jsonify({'error': str(e)}), 500
+            try:
+                camera.start_stream()
+            except:
+                pass
+        return jsonify({'error': f'Exception: {str(e)}'}), 500
 
 @app.route('/camera/stream', methods=['GET'])
 def video_stream():
@@ -505,16 +569,51 @@ def update_settings():
     if 'photo_exposure' in data:
         exposure_us = int(data['photo_exposure'])
         camera_state['exposure'] = exposure_us
-        print(f"[Settings] Set exposure: {exposure_us} μs = {exposure_us/1000000:.3f} s")
-        updated.append(f"exposure={exposure_us}us")
+        print(f"[Settings] Set photo exposure: {exposure_us} μs = {exposure_us/1000000:.3f} s")
+        updated.append(f"photo_exposure={exposure_us}us")
+    
+    if 'video_exposure' in data:
+        video_exposure_us = int(data['video_exposure'])
+        camera_state['video_exposure'] = video_exposure_us
+        
+        # Remember if streaming (need to restart for video_exposure to take effect)
+        was_streaming = camera_state['streaming']
+        print(f"[Settings] Setting video exposure: {video_exposure_us} μs ({video_exposure_us/1000:.1f} ms)")
+        
+        if camera.is_open:
+            # Stop stream if active (video_exposure changes need stream restart)
+            if was_streaming:
+                print(f"[Settings] Stopping stream to apply video exposure...")
+                camera.stop_stream()
+                time.sleep(0.5)
+            
+            # Set ASI_AUTO_MAX_EXP to limit max exposure time in video mode
+            result = asi_lib.ASISetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, video_exposure_us, ASI_FALSE)
+            
+            # Verify it was set
+            actual_max_exp = ctypes.c_long(0)
+            auto_max_exp = ctypes.c_int(0)
+            asi_lib.ASIGetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, ctypes.byref(actual_max_exp), ctypes.byref(auto_max_exp))
+            
+            print(f"[Settings] Set ASI_AUTO_MAX_EXP to {video_exposure_us} μs (result: {result})")
+            print(f"[Settings] Verified ASI_AUTO_MAX_EXP: {actual_max_exp.value} μs")
+            updated.append(f"video_exposure={video_exposure_us}us")
+            
+            # Restart stream if it was active
+            if was_streaming:
+                print(f"[Settings] Restarting stream with new video exposure...")
+                time.sleep(0.5)
+                success = camera.start_stream()
+                print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
     
     print(f"[Settings] Updated: {', '.join(updated) if updated else 'nothing'}")
-    print(f"[Settings] State now - Gain: {camera_state['gain']}, Exposure: {camera_state['exposure']} μs")
+    print(f"[Settings] State now - Gain: {camera_state['gain']}, Photo Exposure: {camera_state['exposure']} μs, Video Exposure: {camera_state['video_exposure']} μs")
     
     return jsonify({
         'success': True,
         'gain': camera_state['gain'],
-        'exposure': camera_state['exposure']
+        'exposure': camera_state['exposure'],
+        'video_exposure': camera_state['video_exposure']
     })
 
 if __name__ == '__main__':

@@ -90,6 +90,7 @@ private struct CombinedCameraSection: View {
     @EnvironmentObject var appState: AppState
     @AppStorage("camera.gain") private var gain: Double = 50
     @AppStorage("camera.photoExposure") private var photoExposure: Double = 1.0  // seconds - for photo capture
+    @AppStorage("camera.videoExposure") private var videoExposure: Double = 0.1  // seconds - max exposure for video streaming (controls frame rate)
     @State private var capturedImage: NSImage?
     @State private var capturedGain: Int = 50
     @State private var capturedExposure: Double = 1.0
@@ -105,6 +106,7 @@ private struct CombinedCameraSection: View {
             appState: appState,
             gain: $gain,
             photoExposure: $photoExposure,
+            videoExposure: $videoExposure,
             capturedImage: $capturedImage,
             capturedGain: $capturedGain,
             capturedExposure: $capturedExposure,
@@ -120,7 +122,7 @@ private struct CombinedCameraSection: View {
 }
 
 @ViewBuilder
-private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>) -> some View {
+private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, videoExposure: Binding<Double>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>) -> some View {
     let isControllerConnected = appState.connectedControllers.contains(controller.id)
     
     SensorsPanel(title: title, icon: "camera.fill") {
@@ -154,7 +156,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 }
                 
                 HStack {
-                    Text("Exposure:")
+                    Text("Photo Exp:")
                         .frame(width: 80, alignment: .leading)
                     Slider(value: photoExposure, in: 0.001...10.0, step: 0.001)
                     Text(String(format: "%.3f s", photoExposure.wrappedValue))
@@ -162,6 +164,20 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                         .monospacedDigit()
                     Button("Set") {
                         updateCameraSetting(controller: controller, photoExposure: photoExposure.wrappedValue, appState: appState)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                
+                HStack {
+                    Text("Video Exp:")
+                        .frame(width: 80, alignment: .leading)
+                    Slider(value: videoExposure, in: 0.010...1.0, step: 0.010)
+                    Text(String(format: "%.3f s", videoExposure.wrappedValue))
+                        .frame(width: 70, alignment: .trailing)
+                        .monospacedDigit()
+                    Button("Set") {
+                        updateCameraSetting(controller: controller, videoExposure: videoExposure.wrappedValue, appState: appState, streamRefreshID: streamRefreshID)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
@@ -295,7 +311,7 @@ private func capturePhoto(controller: ControllerState, appState: AppState, gain:
     }
 }
 
-private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, photoExposure: Double? = nil, appState: AppState, streamRefreshID: Binding<UUID>? = nil) {
+private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, photoExposure: Double? = nil, videoExposure: Double? = nil, appState: AppState, streamRefreshID: Binding<UUID>? = nil) {
     Task {
         do {
             guard let apiClient = controller.apiClient else { 
@@ -304,6 +320,7 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
             }
             
             var photoExpMicroseconds: Int?
+            var videoExpMicroseconds: Int?
             let wasStreaming = controller.sensors.weatherCam.streaming || controller.sensors.meteorCam.streaming
             
             if let exp = photoExposure {
@@ -311,11 +328,16 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
                 appState.addLog(level: .info, module: "camera", message: String(format: "Sending photo exposure: %.3f s", exp), controller: controller)
             }
             
+            if let exp = videoExposure {
+                videoExpMicroseconds = Int(exp * 1_000_000)
+                appState.addLog(level: .info, module: "camera", message: String(format: "Sending video exposure: %.3f s", exp), controller: controller)
+            }
+            
             if let g = gain {
                 appState.addLog(level: .info, module: "camera", message: "Sending gain: \(g)", controller: controller)
             }
             
-            try await apiClient.updateCameraSettings(gain: gain, photoExposure: photoExpMicroseconds)
+            try await apiClient.updateCameraSettings(gain: gain, photoExposure: photoExpMicroseconds, videoExposure: videoExpMicroseconds)
             
             if let g = gain {
                 appState.addLog(level: .info, module: "camera", message: "✓ Gain set to \(g)", controller: controller)
@@ -334,7 +356,23 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
                 }
             }
             if let exp = photoExposure {
-                appState.addLog(level: .info, module: "camera", message: String(format: "✓ Exposure set to %.3f s", exp), controller: controller)
+                appState.addLog(level: .info, module: "camera", message: String(format: "✓ Photo exposure set to %.3f s", exp), controller: controller)
+            }
+            if let exp = videoExposure {
+                appState.addLog(level: .info, module: "camera", message: String(format: "✓ Video exposure set to %.3f s", exp), controller: controller)
+                
+                // If was streaming, wait for stream to restart and force refresh stream view
+                if wasStreaming {
+                    try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+                    controller.fetchStatus()
+                    
+                    // Force refresh stream view by changing its ID
+                    await MainActor.run {
+                        streamRefreshID?.wrappedValue = UUID()
+                    }
+                    
+                    appState.addLog(level: .info, module: "camera", message: "Stream refreshed with new video exposure", controller: controller)
+                }
             }
         } catch {
             appState.addLog(level: .error, module: "camera", message: "Failed to update settings: \(error.localizedDescription)", controller: controller)
@@ -385,6 +423,9 @@ private struct PhotoViewerSheet: View {
     let gain: Int
     let exposure: Double
     @Environment(\.dismiss) var dismiss
+    @State private var saveSuccessMessage: String?
+    @State private var showSavePanel = false
+    @State private var document: ImageDocument?
     
     var body: some View {
         VStack(spacing: 0) {
@@ -393,10 +434,30 @@ private struct PhotoViewerSheet: View {
                     .font(.title2)
                     .fontWeight(.semibold)
                 Spacer()
+                if let message = saveSuccessMessage {
+                    Text(message)
+                        .font(.caption)
+                        .foregroundColor(.green)
+                        .padding(.horizontal, 8)
+                }
+                Button("Save") {
+                    prepareSave()
+                }
+                .buttonStyle(.bordered)
+                .padding(.top, 2)
+                .fileExporter(
+                    isPresented: $showSavePanel,
+                    document: document,
+                    contentType: .jpeg,
+                    defaultFilename: generateDefaultFilename()
+                ) { result in
+                    handleSaveResult(result)
+                }
                 Button("Close") {
                     dismiss()
                 }
                 .buttonStyle(.borderedProminent)
+                .padding(.top, 2)
             }
             .padding()
             
@@ -432,6 +493,60 @@ private struct PhotoViewerSheet: View {
         }
         .frame(width: 800, height: 700)
     }
+    
+    private func generateDefaultFilename() -> String {
+        let formatter = DateFormatter()
+        formatter.dateFormat = "yyyy-MM-dd_HH-mm-ss"
+        let timestamp = formatter.string(from: Date())
+        return "\(timestamp)_gain\(gain)_exp\(String(format: "%.3f", exposure))s.jpg"
+    }
+    
+    private func prepareSave() {
+        // Convert NSImage to JPEG data
+        guard let tiffData = image.tiffRepresentation,
+              let bitmapImage = NSBitmapImageRep(data: tiffData),
+              let jpegData = bitmapImage.representation(using: .jpeg, properties: [.compressionFactor: 0.9]) else {
+            saveSuccessMessage = "Save failed: Could not convert image"
+            return
+        }
+        
+        // Create document for fileExporter
+        document = ImageDocument(data: jpegData)
+        showSavePanel = true
+    }
+    
+    private func handleSaveResult(_ result: Result<URL, Error>) {
+        switch result {
+        case .success(let url):
+            saveSuccessMessage = "Saved!"
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) {
+                saveSuccessMessage = nil
+            }
+        case .failure(let error):
+            saveSuccessMessage = "Save failed: \(error.localizedDescription)"
+        }
+    }
 }
 
+// Document class for fileExporter
+struct ImageDocument: FileDocument {
+    static var readableContentTypes: [UTType] { [.jpeg] }
+    
+    var data: Data
+    
+    init(data: Data) {
+        self.data = data
+    }
+    
+    init(configuration: ReadConfiguration) throws {
+        guard let data = configuration.file.regularFileContents else {
+            throw CocoaError(.fileReadCorruptFile)
+        }
+        self.data = data
+    }
+    
+    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper {
+        return FileWrapper(regularFileWithContents: data)
+    }
+}
 
