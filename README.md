@@ -277,4 +277,4 @@ Pomfret School VISTA Observatory Project
 ## Contact
 
 Pomfret School
-Physics & Astronomy Department
+qtian.28@pomfret.org
