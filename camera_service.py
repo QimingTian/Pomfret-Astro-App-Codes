@@ -354,21 +354,31 @@ class ASICamera:
         # Set gain first (must be set before starting video capture)
         result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain, ASI_FALSE)
         
-        # Set ASI_AUTO_MAX_EXP to limit the maximum exposure time in video mode
-        # This controls the frame rate: shorter max exposure = higher frame rate
+        # For Raspberry Pi/Linux: Try manual exposure first to ensure gain works
+        # Set manual exposure for video mode (disable auto exposure)
+        result_manual = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, video_exposure, ASI_FALSE)
+        
+        # Also set ASI_AUTO_MAX_EXP as backup (in case we switch to auto later)
         result_max_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_AUTO_MAX_EXP, video_exposure, ASI_FALSE)
         
-        # Enable auto exposure for video mode
-        result_auto = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, 0, ASI_TRUE)
+        # Try auto exposure for video mode (may not work well with gain on Linux)
+        # Commented out for now - using manual exposure instead
+        # result_auto = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, 0, ASI_TRUE)
         
         # Verify gain was set
         actual_gain = ctypes.c_long(0)
         auto_gain = ctypes.c_int(0)
         asi_lib.ASIGetControlValue(self.camera_id, ASI_GAIN, ctypes.byref(actual_gain), ctypes.byref(auto_gain))
         
+        # Verify exposure was set
+        actual_exp = ctypes.c_long(0)
+        auto_exp = ctypes.c_int(0)
+        asi_lib.ASIGetControlValue(self.camera_id, ASI_EXPOSURE, ctypes.byref(actual_exp), ctypes.byref(auto_exp))
+        
         print(f"[start_stream] Set gain to {gain} (result: {result_gain}, actual: {actual_gain.value})")
-        print(f"[start_stream] Set video max exposure to {video_exposure} μs ({video_exposure/1000:.1f} ms)")
-        print(f"[start_stream] ASI_AUTO_MAX_EXP result: {result_max_exp}, Auto exposure result: {result_auto}")
+        print(f"[start_stream] Set video exposure to {video_exposure} μs ({video_exposure/1000:.1f} ms)")
+        print(f"[start_stream] Manual exposure result: {result_manual}, actual: {actual_exp.value} μs, auto: {auto_exp.value}")
+        print(f"[start_stream] ASI_AUTO_MAX_EXP result: {result_max_exp}")
         
         print(f"[start_stream] Starting video capture")
         
@@ -877,18 +887,12 @@ def update_settings():
         gain = int(data['gain'])
         camera_state['gain'] = gain
         
-        # Remember if streaming (need to restart for gain to take effect)
+        # Remember if streaming
         was_streaming = camera_state['streaming']
         print(f"[Settings] Current streaming state: {was_streaming}")
         
         if camera.is_open:
-            # Stop stream if active (gain changes need stream restart)
-            if was_streaming:
-                print(f"[Settings] Stopping stream to apply gain...")
-                camera.stop_stream()
-                time.sleep(0.5)
-                print(f"[Settings] Stream stopped. State: {camera_state['streaming']}")
-            
+            # Try to set gain directly if streaming (may work without restart on some SDKs)
             result = asi_lib.ASISetControlValue(camera.camera_id, ASI_GAIN, gain, ASI_FALSE)
             
             # Verify it was set
@@ -896,16 +900,23 @@ def update_settings():
             auto_gain = ctypes.c_int(0)
             asi_lib.ASIGetControlValue(camera.camera_id, ASI_GAIN, ctypes.byref(actual_gain), ctypes.byref(auto_gain))
             
-            print(f"[Settings] Set gain to {gain} (result: {result})")
-            print(f"[Settings] Verified gain: {actual_gain.value} (auto: {auto_gain.value})")
-            updated.append(f"gain={gain}")
+            print(f"[Settings] Set gain to {gain} (result: {result}, actual: {actual_gain.value}, auto: {auto_gain.value})")
             
-            # Restart stream if it was active
+            # If streaming and gain didn't take effect, restart stream
             if was_streaming:
-                print(f"[Settings] Restarting stream with new gain...")
-                time.sleep(0.5)
-                success = camera.start_stream()
-                print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+                # Check if gain actually changed
+                if actual_gain.value != gain:
+                    print(f"[Settings] Gain not applied during streaming, restarting stream...")
+                    camera.stop_stream()
+                    time.sleep(0.5)
+                    result = asi_lib.ASISetControlValue(camera.camera_id, ASI_GAIN, gain, ASI_FALSE)
+                    time.sleep(0.2)
+                    success = camera.start_stream()
+                    print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+                else:
+                    print(f"[Settings] Gain updated successfully without stream restart")
+            
+            updated.append(f"gain={gain}")
     
     if 'photo_exposure' in data:
         exposure_us = int(data['photo_exposure'])
@@ -917,18 +928,12 @@ def update_settings():
         video_exposure_us = int(data['video_exposure'])
         camera_state['video_exposure'] = video_exposure_us
         
-        # Remember if streaming (need to restart for video_exposure to take effect)
+        # Remember if streaming
         was_streaming = camera_state['streaming']
         print(f"[Settings] Setting video exposure: {video_exposure_us} μs ({video_exposure_us/1000:.1f} ms)")
         
         if camera.is_open:
-            # Stop stream if active (video_exposure changes need stream restart)
-            if was_streaming:
-                print(f"[Settings] Stopping stream to apply video exposure...")
-                camera.stop_stream()
-                time.sleep(0.5)
-            
-            # Set ASI_AUTO_MAX_EXP to limit max exposure time in video mode
+            # Try to set ASI_AUTO_MAX_EXP directly if streaming
             result = asi_lib.ASISetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, video_exposure_us, ASI_FALSE)
             
             # Verify it was set
@@ -936,16 +941,23 @@ def update_settings():
             auto_max_exp = ctypes.c_int(0)
             asi_lib.ASIGetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, ctypes.byref(actual_max_exp), ctypes.byref(auto_max_exp))
             
-            print(f"[Settings] Set ASI_AUTO_MAX_EXP to {video_exposure_us} μs (result: {result})")
-            print(f"[Settings] Verified ASI_AUTO_MAX_EXP: {actual_max_exp.value} μs")
-            updated.append(f"video_exposure={video_exposure_us}us")
+            print(f"[Settings] Set ASI_AUTO_MAX_EXP to {video_exposure_us} μs (result: {result}, actual: {actual_max_exp.value} μs)")
             
-            # Restart stream if it was active
+            # If streaming and value didn't take effect, restart stream
             if was_streaming:
-                print(f"[Settings] Restarting stream with new video exposure...")
-                time.sleep(0.5)
-                success = camera.start_stream()
-                print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+                # Check if value actually changed (allow some tolerance)
+                if abs(actual_max_exp.value - video_exposure_us) > 1000:  # More than 1ms difference
+                    print(f"[Settings] Video exposure not applied during streaming, restarting stream...")
+                    camera.stop_stream()
+                    time.sleep(0.5)
+                    result = asi_lib.ASISetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, video_exposure_us, ASI_FALSE)
+                    time.sleep(0.2)
+                    success = camera.start_stream()
+                    print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+                else:
+                    print(f"[Settings] Video exposure updated successfully without stream restart")
+            
+            updated.append(f"video_exposure={video_exposure_us}us")
     
     if 'image_format' in data:
         format_map = {
