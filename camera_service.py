@@ -425,7 +425,7 @@ class ASICamera:
             # SDK recommends: exposure*2+500ms
             video_exposure_ms = camera_state['video_exposure'] / 1000.0  # Convert to ms
             timeout_ms = int(video_exposure_ms * 2 + 500)
-            timeout_ms = max(1000, min(timeout_ms, 5000))  # Clamp between 1s and 5s
+            timeout_ms = max(100, min(timeout_ms, 5000))  # Clamp between 100ms and 5s (was 1s minimum)
             
             drop_frames = ctypes.c_int(0)
             result = asi_lib.ASIGetVideoData(
@@ -452,7 +452,9 @@ class ASICamera:
                 if consecutive_errors == 1 or consecutive_errors % 10 == 0:
                     print(f"Error getting video data: {result} (consecutive: {consecutive_errors})")
             
-            time.sleep(0.01)  # Small delay to prevent CPU overload
+            # Minimal sleep - let camera exposure time control the actual frame rate
+            # If exposure is short, we'll get frames faster; if long, we'll wait longer
+            time.sleep(0.001)  # 1ms sleep - much shorter to allow FPS to vary with exposure
     
     def capture_snapshot(self):
         """Capture a single snapshot"""
@@ -870,7 +872,13 @@ def video_stream():
                 img_io.seek(0)
                 yield (b'--frame\r\n'
                        b'Content-Type: image/jpeg\r\n\r\n' + img_io.read() + b'\r\n')
-            time.sleep(0.1)
+                
+                # Minimal sleep to prevent CPU overload, but let camera capture rate control FPS
+                # The actual FPS will be determined by the camera's exposure time and capture speed
+                time.sleep(0.005)  # 5ms sleep - much shorter than before to allow higher FPS
+            else:
+                # No frame available, short sleep to avoid busy waiting
+                time.sleep(0.01)
     
     return Response(generate(), mimetype='multipart/x-mixed-replace; boundary=frame')
 
