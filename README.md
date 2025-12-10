@@ -1,10 +1,38 @@
-# Pomfret VISTA Observatory Control System
+# Pomfret Astro
 
-macOS application for controlling the Pomfret School VISTA Observatory, including roof control, environmental monitoring, and all-sky camera systems.
+macOS application for controlling the Pomfret School VISTA Observatory, including camera control and environmental monitoring.
 
 ## Version History
 
-### Version 1.1 (Current)
+### Version 2.0
+**Release Date:** December 6, 2025
+
+**Major Changes:**
+-  **Rebranded to "Pomfret Astro"** - New name and simplified focus on camera control
+-  **Dramatically Improved Photo Capture Speed** - Removed unnecessary waits, instant photo capture
+-  **Advanced Image Format Support** - Select camera format (RGB24, RAW8, RAW16, Y8) before capture
+-  **Flexible File Format Options** - Save photos as JPEG, PNG, or TIFF
+-  **Sequence Capture** - Take multiple photos continuously with progress tracking
+
+**New Features:**
+-  **Photo Saving** - Save captured photos to local machine with format selection
+-  **Camera Format Selection** - Choose RGB24, RAW8, RAW16, or Y8 before taking photos
+-  **File Format Selection** - Save photos as JPEG (100% quality), PNG, or TIFF
+-  **Sequence Capture** - Capture multiple photos in sequence with:
+  - Customizable count (1-100+)
+  - Progress bar with time estimation
+  - Persistent state across tab switches
+  - Local file saving with security-scoped bookmarks
+-  **Instant Photo Capture** - Optimized camera control logic, no unnecessary delays
+
+**Technical Improvements:**
+- Simplified camera control logic based on asicap implementation
+- Removed complex state management and unnecessary waits
+- Streamlined API endpoints
+- Improved error handling and logging
+- Better camera state transitions
+
+### Version 1.1
 **Release Date:** December 4, 2025
 
 **Major Features:**
@@ -45,57 +73,122 @@ macOS application for controlling the Pomfret School VISTA Observatory, includin
    - Controls observatory roof and equipment
 
 2. **Camera Service** (`camera_service.py`)
-   - Runs on Mac Mini at observatory site
+   - Runs on Raspberry Pi at observatory site (Raspberry Pi 4 or newer recommended for 24/7 operation)
    - Controls ASI all-sky cameras (120MC/676MC)
    - Provides HTTP API and MJPEG video stream
-   - Requires: Python 3, Flask, NumPy, Pillow
+   - **System Requirements:**
+     - Raspberry Pi (Raspberry Pi OS / Debian-based Linux)
+     - USB 3.0 interface for ASI camera (USB 2.0 also works but slower)
+     - Python 3, Flask, NumPy, Pillow
+     - ASI Camera SDK for Linux
+     - libusb-1.0 (via apt)
 
 3. **Hardware Controllers**
-   - Roof control system
-   - Environmental sensors (temperature, humidity)
-   - Side-wall panels (future)
+   - Camera control system
+   - ASI camera support (ZWO 120MC/676MC)
 
 ## Quick Start
 
 ### Running the Application
 
-1. Open `Pomfret VISTA Observatory.xcodeproj` in Xcode
+1. Open `Pomfret Astro.xcodeproj` in Xcode
 2. Build and run (⌘R)
 3. Login with password: `VISTAobs`
 4. Configure controllers in Settings
 
-### Setting up Camera Service (Mac Mini)
+### Setting up Camera Service (Raspberry Pi)
 
-1. Install dependencies:
+**Note:** Raspberry Pi 4 or newer is recommended for 24/7 operation. Raspberry Pi 3 also works but may have performance limitations. The service automatically detects the Pi architecture (armv6/armv7/armv8).
+
+1. Install system dependencies:
 ```bash
-pip3 install flask flask-cors pillow numpy
-brew install libusb
+sudo apt update
+sudo apt install -y python3-pip python3-numpy libusb-1.0-0
 ```
 
-2. Run the service:
+2. Install Python dependencies:
+```bash
+pip3 install flask flask-cors pillow
+```
+
+3. Install ASI Camera SDK udev rules (required for non-root access):
+```bash
+# Copy udev rules
+sudo cp ASI_linux_mac_SDK_V1.40/lib/asi.rules /etc/udev/rules.d/
+# Reload udev rules
+sudo udevadm control --reload-rules
+sudo udevadm trigger
+# Reconnect camera or reboot
+```
+
+4. Verify USB memory limit (should be 200MB):
+```bash
+cat /sys/module/usbcore/parameters/usbfs_memory_mb
+# If not 200, set it:
+echo 200 | sudo tee /sys/module/usbcore/parameters/usbfs_memory_mb
+# To make it permanent, add to /etc/modprobe.d/usbcore.conf:
+# options usbcore usbfs_memory_mb=200
+```
+
+5. Run the service:
 ```bash
 cd ~/Desktop
 python3 camera_service.py
 ```
 
-3. Service will run on `http://[MAC_MINI_IP]:8080`
+6. The service will automatically detect your Raspberry Pi architecture and load the correct SDK library. Service will run on `http://[RASPBERRY_PI_IP]:8080`
 
 ### Setting up Remote Access (Cloudflare Tunnel)
 
-For permanent remote access from anywhere:
+#### Option 1: Temporary URL (Quick Setup)
 
-1. Install cloudflared on Mac Mini:
+For quick temporary access without configuration:
+
+1. Install cloudflared on Raspberry Pi:
 ```bash
-brew install cloudflare/cloudflare/cloudflared
+# Download and install cloudflared
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64
+# For 32-bit Pi, use: cloudflared-linux-arm
+sudo mv cloudflared-linux-arm64 /usr/local/bin/cloudflared
+sudo chmod +x /usr/local/bin/cloudflared
+```
+
+2. Run cloudflared tunnel in terminal:
+```bash
+cloudflared tunnel --url http://localhost:8080
+```
+
+3. Cloudflared will generate a temporary URL like:
+   ```
+   https://random-name-1234.trycloudflare.com
+   ```
+
+4. Use this temporary URL in the app's Settings:
+   - **Base URL**: `https://random-name-1234.trycloudflare.com`
+   - This URL is valid until you close the terminal or stop cloudflared
+
+**Note:** The temporary URL changes each time you restart cloudflared.
+
+#### Option 2: Permanent URL (Requires Cloudflare Account)
+
+For permanent remote access with a fixed URL:
+
+1. Install cloudflared on Raspberry Pi:
+```bash
+# Download and install cloudflared
+wget https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-arm64
+# For 32-bit Pi, use: cloudflared-linux-arm
+sudo mv cloudflared-linux-arm64 /usr/local/bin/cloudflared
+sudo chmod +x /usr/local/bin/cloudflared
 ```
 
 2. Create and configure tunnel:
    - Login to [Cloudflare Zero Trust Dashboard](https://one.dash.cloudflare.com/)
    - Navigate to **Networks** → **Tunnels**
    - Create a new tunnel, get the token
-   - Install on Mac Mini:
+   - Install on Raspberry Pi:
 ```bash
-cloudflared service install <YOUR_TOKEN>
+sudo cloudflared service install <YOUR_TOKEN>
 ```
 
 3. Configure Public Hostname:
@@ -103,7 +196,7 @@ cloudflared service install <YOUR_TOKEN>
    - Service: `http://localhost:8080`
    - Your permanent URL: `https://pomfret-obs.pomfretastro.org`
 
-4. The tunnel service will auto-start on Mac Mini boot
+4. The tunnel service will auto-start on Raspberry Pi boot
 
 ### Adding Controllers
 
@@ -112,11 +205,20 @@ cloudflared service install <YOUR_TOKEN>
 2. Click **Add Controller** or edit existing
 3. Configure:
    - **Name**: Camera Service
-   - **Base URL**: `http://172.18.2.101:8080` (Mac Mini local IP)
-   - **Roles**: Check "Cameras" and "Environment Sensors"
+   - **Base URL**: `http://172.18.2.101:8080` (Raspberry Pi local IP)
+   - **Roles**: Check "Cameras"
 4. Click **Connect**
 
 **For Remote Access (from anywhere):**
+
+**Using Temporary URL:**
+1. On Raspberry Pi, run: `cloudflared tunnel --url http://localhost:8080`
+2. Copy the generated URL (e.g., `https://random-name-1234.trycloudflare.com`)
+3. In app Settings, set **Base URL** to the temporary URL
+4. Click **Connect**
+5. **Note:** URL changes each time you restart cloudflared
+
+**Using Permanent URL:**
 1. Use the permanent Cloudflare URL:
    - **Base URL**: `https://pomfret-obs.pomfretastro.org`
 2. Same roles configuration as above
@@ -124,28 +226,21 @@ cloudflared service install <YOUR_TOKEN>
 
 ## Features
 
-### Roof Control
-- Open/close observatory roof
-- Emergency stop
-- Magnetic lock control
-- Real-time status monitoring
-
 ### Camera System
 - ASI 120MC / 676MC all-sky cameras
 - Real-time MJPEG video streaming with adjustable stream exposure (0.001-1s)
 - High-quality photo capture with separate exposure control (0.001-10s)
+- **Camera format selection** - RGB24, RAW8, RAW16, Y8
+- **File format selection** - JPEG (100% quality), PNG, TIFF
+- **Sequence capture** - Take multiple photos continuously with progress tracking
 - Adjustable gain (0-300, camera-dependent maximum)
 - Settings persist across sessions
 - Automatic stream restart when adjusting gain
-
-### Environmental Monitoring
-- Temperature and humidity sensors
-- Weather data integration
-- Safety checks (rain, wind, door status)
+- **Instant photo capture** - Optimized for speed, no unnecessary delays
 
 ### Multi-Controller Support
-- Connect to multiple hardware controllers
-- Each controller can have multiple roles
+- Connect to multiple camera controllers
+- Camera role only (simplified architecture)
 - Automatic status refresh every 5 seconds
 - Comprehensive logging system
 
@@ -163,19 +258,17 @@ Sources/
 │   └── WeatherClient.swift     # Weather data fetching
 ├── Views/
 │   ├── LoginView.swift          # Authentication
-│   ├── RoofView.swift           # Roof control interface
-│   ├── SensorsView.swift        # Sensors & cameras
+│   ├── SensorsView.swift        # Camera control (Camera tab)
 │   ├── WeatherView.swift        # Weather display
 │   ├── LogsView.swift           # System logs
 │   ├── SettingsView.swift       # Configuration
 │   └── Components/
 │       ├── MJPEGStreamView.swift  # Video stream display
-│       ├── StatusBadge.swift      # Status indicators
-│       └── ConfirmDialog.swift    # Confirmation dialogs
+│       └── StatusBadge.swift      # Status indicators
 └── Bridging/
     └── ASICamera2-Bridging-Header.h
 
-camera_service.py                # Camera control service (for Mac Mini)
+camera_service.py                # Camera control service (for Raspberry Pi)
 
 ThirdParty/
 └── ASISDK/                      # ASI Camera SDK
@@ -187,19 +280,19 @@ ThirdParty/
 
 ### Endpoints
 
-- `GET /status` - Get camera and sensor status
+- `GET /status` - Get camera status
 - `POST /camera/stream/start` - Start video streaming
 - `POST /camera/stream/stop` - Stop video streaming
 - `GET /camera/snapshot` - Capture single image
 - `GET /camera/stream` - MJPEG video stream
+- `POST /camera/settings` - Update camera settings (gain, exposure, image format)
+- `POST /camera/sequence/capture` - Capture multiple photos in sequence
 
 ### Status Response Format
 
 ```json
 {
   "sensors": {
-    "temperature": null,
-    "humidity": null,
     "weatherCam": {
       "connected": true,
       "streaming": false,
@@ -221,8 +314,16 @@ ThirdParty/
 ### Current Setup
 - **Camera**: ZWO ASI 120MC (1280x960, color)
 - **Future**: ZWO ASI 676MC (3008x3008, color)
-- **Mac Mini**: Intel, running camera service
+- **Server**: Raspberry Pi 4 (or newer) running camera service
 - **Network**: Local network connection required
+
+**Server Requirements:**
+- Raspberry Pi 4 or newer (Raspberry Pi 3 also works but may have performance limitations)
+- Raspberry Pi OS (Debian-based Linux)
+- USB 3.0 interface (recommended for ASI cameras, USB 2.0 also works but slower)
+- ASI Camera SDK for Linux installed
+- Python 3 with required dependencies
+- libusb-1.0 installed
 
 ### Camera Specifications
 
@@ -247,23 +348,27 @@ ThirdParty/
 
 ### Building
 ```bash
-open "Pomfret VISTA Observatory.xcodeproj"
+open "Pomfret Astro.xcodeproj"
 # Build in Xcode (⌘B)
 ```
 
 ## Troubleshooting
 
 ### Camera Not Connecting
-- Check USB connection to Mac Mini
-- Verify `libusb` is installed: `brew install libusb`
+- Check USB connection to Raspberry Pi
+- Verify `libusb-1.0` is installed: `sudo apt install libusb-1.0-0`
+- Verify udev rules are installed: `ls /etc/udev/rules.d/asi.rules`
+- Reload udev rules: `sudo udevadm control --reload-rules && sudo udevadm trigger`
 - Check camera service is running
 - Verify network connectivity
+- Check USB memory limit: `cat /sys/module/usbcore/parameters/usbfs_memory_mb` (should be 200)
 
 ### Video Stream Not Displaying
 - Ensure camera is streaming (check status)
-- Test stream in browser: `http://[MAC_MINI_IP]:8080/camera/stream`
+- Test stream in browser: `http://[RASPBERRY_PI_IP]:8080/camera/stream`
 - Check network connection
 - Review logs in application
+- Check Raspberry Pi CPU/memory usage (may need to reduce video quality for older Pi)
 
 ### Application Crashes on Login
 - Ensure no controllers are configured to auto-connect

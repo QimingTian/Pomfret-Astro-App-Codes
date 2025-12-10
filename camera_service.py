@@ -1,7 +1,14 @@
 #!/usr/bin/env python3
 """
-ASI Camera Service for Mac Mini
+ASI Camera Service for Raspberry Pi (Linux)
 Provides HTTP API and MJPEG stream for remote access
+
+System Requirements:
+- Raspberry Pi (Raspberry Pi OS / Debian-based Linux)
+- USB 3.0 interface for ASI camera (USB 2.0 also works but slower)
+- ASI Camera SDK for Linux
+- Python 3 with Flask, NumPy, Pillow
+- libusb-1.0 (via apt)
 """
 
 from flask import Flask, Response, jsonify, send_file
@@ -12,6 +19,8 @@ from PIL import Image
 import io
 import time
 import threading
+import os
+import platform
 from datetime import datetime
 
 app = Flask(__name__)
@@ -19,12 +28,61 @@ CORS(app)
 
 # Load ASI Camera library
 asi_lib = None
-lib_paths = [
-    '/Users/user/Desktop/ASI_linux_mac_SDK_V1.40/lib/mac/libASICamera2.dylib',
-    '/Users/user/Desktop/ASI_linux_mac_SDK_V1.40/lib/mac_arm64/libASICamera2.dylib',
-]
+
+# Detect system architecture and build library paths
+def get_library_paths():
+    """Detect system architecture and return appropriate SDK library paths"""
+    machine = platform.machine().lower()
+    base_path = os.path.dirname(os.path.abspath(__file__))
+    sdk_base = os.path.join(base_path, 'ASI_linux_mac_SDK_V1.40', 'lib')
+    
+    paths = []
+    
+    # Try to detect Raspberry Pi architecture
+    if 'arm' in machine or 'aarch64' in machine:
+        # Check for 64-bit ARM (Raspberry Pi 3/4/5 64-bit)
+        if 'aarch64' in machine or 'arm64' in machine:
+            paths.append(os.path.join(sdk_base, 'armv8', 'libASICamera2.so'))
+            paths.append(os.path.join(sdk_base, 'armv8', 'libASICamera2.so.1.40'))
+        # Check for 32-bit ARM
+        elif 'armv7' in machine or 'armv7l' in machine:
+            paths.append(os.path.join(sdk_base, 'armv7', 'libASICamera2.so'))
+            paths.append(os.path.join(sdk_base, 'armv7', 'libASICamera2.so.1.40'))
+        # Fallback to armv6 for older Pi
+        else:
+            paths.append(os.path.join(sdk_base, 'armv6', 'libASICamera2.so'))
+            paths.append(os.path.join(sdk_base, 'armv6', 'libASICamera2.so.1.40'))
+    # x86_64 (Intel/AMD 64-bit)
+    elif 'x86_64' in machine or 'amd64' in machine:
+        paths.append(os.path.join(sdk_base, 'x64', 'libASICamera2.so'))
+        paths.append(os.path.join(sdk_base, 'x64', 'libASICamera2.so.1.40'))
+    # x86 (32-bit)
+    elif 'i386' in machine or 'i686' in machine:
+        paths.append(os.path.join(sdk_base, 'x86', 'libASICamera2.so'))
+        paths.append(os.path.join(sdk_base, 'x86', 'libASICamera2.so.1.40'))
+    
+    # Also try common installation paths
+    common_paths = [
+        '/usr/local/lib/libASICamera2.so',
+        '/usr/lib/libASICamera2.so',
+        '/opt/ASI_linux_mac_SDK_V1.40/lib/armv8/libASICamera2.so',
+        '/opt/ASI_linux_mac_SDK_V1.40/lib/armv7/libASICamera2.so',
+        '/opt/ASI_linux_mac_SDK_V1.40/lib/armv6/libASICamera2.so',
+    ]
+    
+    # Add common paths to the list
+    paths.extend(common_paths)
+    
+    return paths
+
+lib_paths = get_library_paths()
+
+print(f"Detected architecture: {platform.machine()}")
+print(f"Trying to load ASI Camera library from {len(lib_paths)} possible paths...")
 
 for lib_path in lib_paths:
+    if not os.path.exists(lib_path):
+        continue
     try:
         print(f"Trying to load: {lib_path}")
         asi_lib = ctypes.CDLL(lib_path)
@@ -35,6 +93,11 @@ for lib_path in lib_paths:
 
 if asi_lib is None:
     print("ERROR: Could not load ASI Camera library")
+    print("Please ensure:")
+    print("1. ASI Camera SDK is installed")
+    print("2. Library path is correct in camera_service.py")
+    print("3. udev rules are installed: sudo cp ASI_linux_mac_SDK_V1.40/lib/asi.rules /etc/udev/rules.d/")
+    print("4. Camera is connected and udev rules are reloaded: sudo udevadm control --reload-rules")
 
 # ASI Camera constants (from ASICamera2.h)
 ASI_SUCCESS = 0
@@ -74,8 +137,19 @@ camera_state = {
     'exposure': 1000000,  # microseconds - for photo capture only
     'video_exposure': 100000,  # microseconds - max exposure for video streaming (controls frame rate)
     'gain': 50,
+    'image_format': ASI_IMG_RGB24,  # Default to RGB24
     'current_frame': None,
     'error': None
+}
+
+# Sequence capture state
+sequence_state = {
+    'active': False,
+    'save_path': None,
+    'total_count': 0,
+    'current_count': 0,
+    'file_format': 'JPEG',  # JPEG, PNG, or TIFF
+    'thread': None
 }
 
 class ASICamera:
@@ -154,13 +228,13 @@ class ASICamera:
             
             self.is_open = True
             
-            # Set ROI format (full frame, RGB24)
+            # Set ROI format (full frame, use current format setting)
             result = asi_lib.ASISetROIFormat(
                 self.camera_id,
                 camera_info.MaxWidth,
                 camera_info.MaxHeight,
                 1,  # bin
-                ASI_IMG_RGB24
+                camera_state['image_format']
             )
             
             if result != ASI_SUCCESS:
@@ -204,6 +278,69 @@ class ASICamera:
         camera_state['connected'] = False
         camera_state['streaming'] = False
     
+    def reset_camera(self):
+        """Reset camera by closing and reopening - use when camera is stuck in FAILED state"""
+        if not self.is_open or self.camera_id < 0:
+            return False
+        
+        print("[reset_camera] Attempting to reset camera...")
+        camera_id = self.camera_id
+        width = camera_state['width']
+        height = camera_state['height']
+        gain = camera_state['gain']
+        exposure = camera_state['exposure']
+        image_format = camera_state['image_format']
+        
+        try:
+            # Close camera
+            print("[reset_camera] Closing camera...")
+            asi_lib.ASICloseCamera(camera_id)
+            self.is_open = False
+            time.sleep(1.0)
+            
+            # Reopen camera
+            print("[reset_camera] Reopening camera...")
+            result = asi_lib.ASIOpenCamera(camera_id)
+            if result != ASI_SUCCESS:
+                print(f"[reset_camera] Failed to reopen camera: {result}")
+                return False
+            
+            # Reinitialize camera
+            result = asi_lib.ASIInitCamera(camera_id)
+            if result != ASI_SUCCESS:
+                print(f"[reset_camera] Failed to reinitialize camera: {result}")
+                asi_lib.ASICloseCamera(camera_id)
+                return False
+            
+            self.is_open = True
+            
+            # Restore settings
+            print("[reset_camera] Restoring camera settings...")
+            asi_lib.ASISetROIFormat(camera_id, width, height, 1, image_format)
+            time.sleep(0.3)
+            asi_lib.ASISetControlValue(camera_id, ASI_GAIN, gain, ASI_FALSE)
+            asi_lib.ASISetControlValue(camera_id, ASI_EXPOSURE, exposure, ASI_FALSE)
+            asi_lib.ASISetControlValue(camera_id, ASI_BANDWIDTHOVERLOAD, 40, ASI_FALSE)
+            time.sleep(0.3)
+            
+            # Check status
+            status = ctypes.c_int(0)
+            asi_lib.ASIGetExpStatus(camera_id, ctypes.byref(status))
+            if status.value == 0:
+                print("[reset_camera] Camera successfully reset to IDLE state")
+                return True
+            else:
+                status_names = {0: "ASI_EXP_IDLE", 1: "ASI_EXP_WORKING", 2: "ASI_EXP_SUCCESS", 3: "ASI_EXP_FAILED"}
+                status_name = status_names.get(status.value, f"UNKNOWN_{status.value}")
+                print(f"[reset_camera] Camera reset but still in state {status.value} ({status_name})")
+                return False
+                
+        except Exception as e:
+            print(f"[reset_camera] Exception during reset: {e}")
+            import traceback
+            traceback.print_exc()
+            return False
+    
     def start_stream(self):
         """Start video streaming"""
         if not self.is_open:
@@ -240,7 +377,7 @@ class ASICamera:
         return True
     
     def stop_stream(self):
-        """Stop video streaming"""
+        """Stop video streaming - simplified like asicap, just call SDK"""
         self.streaming = False
         camera_state['streaming'] = False
         
@@ -248,7 +385,12 @@ class ASICamera:
             self.capture_thread.join(timeout=2.0)
         
         if self.is_open and self.camera_id >= 0:
-            asi_lib.ASIStopVideoCapture(self.camera_id)
+            print("[stop_stream] Stopping video capture...")
+            result = asi_lib.ASIStopVideoCapture(self.camera_id)
+            if result != ASI_SUCCESS:
+                print(f"[stop_stream] ASIStopVideoCapture returned: {result}")
+            else:
+                print("[stop_stream] Video capture stopped successfully")
     
     def _capture_loop(self):
         """Continuous capture loop for streaming"""
@@ -298,59 +440,52 @@ class ASICamera:
             print("[capture_snapshot] Camera not open")
             return None
         
-        # Wait for camera to be in IDLE state (in case previous exposure is still running)
-        status = ctypes.c_int(0)
-        asi_lib.ASIGetExpStatus(self.camera_id, ctypes.byref(status))
+        # Ensure video capture is stopped (if it was running)
+        if self.streaming:
+            print("[capture_snapshot] Warning: Camera is streaming, stopping...")
+            self.stop_stream()
+            time.sleep(0.5)
         
-        if status.value != 0:  # Not IDLE
-            print(f"[capture_snapshot] Camera not idle (status: {status.value}), waiting...")
-            timeout = 0
-            while status.value != 0 and timeout < 10000:  # Wait up to 10 seconds
-                time.sleep(0.1)
-                asi_lib.ASIGetExpStatus(self.camera_id, ctypes.byref(status))
-                timeout += 100
-            
-            if status.value != 0:
-                print(f"[capture_snapshot] Camera still not idle after timeout, forcing stop...")
-                asi_lib.ASIStopExposure(self.camera_id)
-                time.sleep(0.5)
+        # Simplified approach like asicap: just stop video if needed, then start exposure
+        # Don't wait for IDLE state - let SDK handle it
         
-        # Set exposure before capturing (can be long for detail)
+        # If streaming, stop it first
+        if self.streaming:
+            print("[capture_snapshot] Stopping stream before snapshot...")
+            self.stop_stream()
+            time.sleep(0.1)  # Brief pause for SDK to process
+        
+        # Set exposure and gain (disable auto for photo mode)
         exposure = camera_state['exposure']
         gain_val = camera_state['gain']
         
-        result_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, exposure, ASI_FALSE)
-        result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain_val, ASI_FALSE)
+        # Disable auto exposure and set manual values
+        asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, exposure, ASI_FALSE)
+        asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain_val, ASI_FALSE)
         
-        print(f"[capture_snapshot] Set exposure: {exposure} μs ({exposure/1000000:.3f} s) (result: {result_exp})")
-        print(f"[capture_snapshot] Set gain: {gain_val} (result: {result_gain})")
-        print(f"[capture_snapshot] Camera is idle, starting exposure...")
+        print(f"[capture_snapshot] Starting exposure: {exposure} μs, gain: {gain_val}")
         
-        # Start exposure
-        result = asi_lib.ASIStartExposure(self.camera_id, 0)  # 0 = not dark frame (ASI_FALSE)
+        # Start exposure - SDK will return error if video mode is still active
+        result = asi_lib.ASIStartExposure(self.camera_id, 0)  # 0 = not dark frame
+        
         if result != ASI_SUCCESS:
             error_names = {
-                1: "ASI_ERROR_INVALID_INDEX",
-                2: "ASI_ERROR_INVALID_ID", 
-                3: "ASI_ERROR_INVALID_CONTROL_TYPE",
-                4: "ASI_ERROR_CAMERA_CLOSED",
-                5: "ASI_ERROR_CAMERA_REMOVED",
-                6: "ASI_ERROR_INVALID_PATH",
-                7: "ASI_ERROR_INVALID_FILEFORMAT",
-                8: "ASI_ERROR_INVALID_SIZE",
-                9: "ASI_ERROR_INVALID_IMGTYPE",
-                10: "ASI_ERROR_OUTOF_BOUNDARY",
-                11: "ASI_ERROR_TIMEOUT",
-                12: "ASI_ERROR_INVALID_SEQUENCE",
-                13: "ASI_ERROR_BUFFER_TOO_SMALL",
                 14: "ASI_ERROR_VIDEO_MODE_ACTIVE",
                 15: "ASI_ERROR_EXPOSURE_IN_PROGRESS",
-                16: "ASI_ERROR_GENERAL_ERROR",
-                17: "ASI_ERROR_INVALID_MODE"
             }
-            error_name = error_names.get(result, f"UNKNOWN_ERROR_{result}")
+            error_name = error_names.get(result, f"ERROR_{result}")
             print(f"[capture_snapshot] Failed to start exposure: {result} ({error_name})")
-            return None
+            # If video mode is still active, try stopping again
+            if result == 14:  # ASI_ERROR_VIDEO_MODE_ACTIVE
+                print("[capture_snapshot] Video mode still active, stopping again...")
+                asi_lib.ASIStopVideoCapture(self.camera_id)
+                time.sleep(0.2)
+                result = asi_lib.ASIStartExposure(self.camera_id, 0)
+                if result != ASI_SUCCESS:
+                    print(f"[capture_snapshot] Still failed after retry: {result}")
+                    return None
+            else:
+                return None
         
         # Wait for exposure to complete
         status = ctypes.c_int(0)
@@ -361,22 +496,39 @@ class ASICamera:
             asi_lib.ASIGetExpStatus(self.camera_id, ctypes.byref(status))
             if status.value == 2:  # ASI_EXP_SUCCESS
                 break
+            if status.value == 3:  # ASI_EXP_FAILED - don't wait, fail immediately
+                status_name = status_names.get(status.value, f"UNKNOWN_{status.value}")
+                print(f"[capture_snapshot] Exposure failed with status: {status.value} ({status_name}) at timeout: {timeout}ms")
+                return None
             time.sleep(0.1)
             timeout += 100
         
         if status.value != 2:
-            status_names = {0: "ASI_EXP_IDLE", 1: "ASI_EXP_WORKING", 2: "ASI_EXP_SUCCESS", 3: "ASI_EXP_FAILED"}
             status_name = status_names.get(status.value, f"UNKNOWN_{status.value}")
-            print(f"[capture_snapshot] Exposure failed with status: {status.value} ({status_name})")
+            print(f"[capture_snapshot] Exposure failed with status: {status.value} ({status_name}) after {timeout}ms")
             return None
         
-        # Get image data
+        # Get image data based on format
         width = camera_state['width']
         height = camera_state['height']
-        buffer_size = width * height * 3
-        buffer = (ctypes.c_ubyte * buffer_size)()
+        img_format = camera_state['image_format']
         
+        # Calculate buffer size based on format
+        if img_format == ASI_IMG_RGB24:
+            buffer_size = width * height * 3
+            buffer = (ctypes.c_ubyte * buffer_size)()
+        elif img_format == ASI_IMG_RAW8 or img_format == ASI_IMG_Y8:
+            buffer_size = width * height
+            buffer = (ctypes.c_ubyte * buffer_size)()
+        elif img_format == ASI_IMG_RAW16:
+            buffer_size = width * height * 2
+            buffer = (ctypes.c_ubyte * buffer_size)()  # Use byte buffer, will convert to uint16 later
+        else:
+            print(f"[capture_snapshot] Unsupported image format: {img_format}")
+            return None
+
         result = asi_lib.ASIGetDataAfterExp(self.camera_id, ctypes.byref(buffer), buffer_size)
+        
         if result != ASI_SUCCESS:
             error_names = {
                 1: "ASI_ERROR_INVALID_INDEX",
@@ -390,14 +542,135 @@ class ASICamera:
             }
             error_name = error_names.get(result, f"UNKNOWN_ERROR_{result}")
             print(f"[capture_snapshot] Failed to get image data: {result} ({error_name})")
+            print(f"[capture_snapshot] Buffer size requested: {buffer_size}, format: {img_format}, width: {width}, height: {height}")
+            # Check exposure status
+            status_check = ctypes.c_int(0)
+            asi_lib.ASIGetExpStatus(self.camera_id, ctypes.byref(status_check))
+            status_names = {0: "ASI_EXP_IDLE", 1: "ASI_EXP_WORKING", 2: "ASI_EXP_SUCCESS", 3: "ASI_EXP_FAILED"}
+            status_name = status_names.get(status_check.value, f"UNKNOWN_{status_check.value}")
+            print(f"[capture_snapshot] Exposure status when getting data: {status_check.value} ({status_name})")
             return None
-        
-        # Convert to PIL Image
-        img_array = np.frombuffer(buffer, dtype=np.uint8)
-        img_array = img_array.reshape((height, width, 3))
-        img = Image.fromarray(img_array, 'RGB')
-        
+
+        # Convert to PIL Image based on format
+        if img_format == ASI_IMG_RGB24:
+            img_array = np.frombuffer(buffer, dtype=np.uint8)
+            img_array = img_array.reshape((height, width, 3))
+            img = Image.fromarray(img_array, 'RGB')
+        elif img_format == ASI_IMG_Y8:
+            img_array = np.frombuffer(buffer, dtype=np.uint8)
+            img_array = img_array.reshape((height, width))
+            img = Image.fromarray(img_array, 'L')  # Grayscale
+        elif img_format == ASI_IMG_RAW8:
+            # RAW8: Simple debayering (Bayer pattern to RGB)
+            # For now, convert to grayscale for display, but save as RAW data
+            img_array = np.frombuffer(buffer, dtype=np.uint8)
+            img_array = img_array.reshape((height, width))
+            # Simple debayering: treat as grayscale for now
+            # TODO: Implement proper Bayer demosaicing
+            img = Image.fromarray(img_array, 'L')
+        elif img_format == ASI_IMG_RAW16:
+            # RAW16: Convert byte buffer to uint16 array (little-endian)
+            img_array = np.frombuffer(buffer, dtype=np.uint8)
+            # Reshape to pairs and convert to uint16
+            img_array_pairs = img_array.reshape((height * width, 2))
+            img_array_16bit = img_array_pairs[:, 0].astype(np.uint16) | (img_array_pairs[:, 1].astype(np.uint16) << 8)
+            img_array_16bit = img_array_16bit.reshape((height, width))
+            # Scale to 8-bit for display (use upper 8 bits)
+            img_array_8bit = (img_array_16bit >> 8).astype(np.uint8)
+            img = Image.fromarray(img_array_8bit, 'L')
+        else:
+            print(f"[capture_snapshot] Unsupported format: {img_format}")
+            return None
+
         return img
+
+def sequence_capture_loop():
+    """Background thread for sequence capture"""
+    import os
+    
+    while sequence_state['active']:
+        try:
+            if sequence_state['current_count'] >= sequence_state['total_count']:
+                sequence_state['active'] = False
+                print(f"[Sequence] Completed {sequence_state['current_count']}/{sequence_state['total_count']} photos")
+                break
+            
+            # Capture photo
+            was_streaming = camera.streaming
+            if was_streaming:
+                camera.stop_stream()
+                time.sleep(1.0)
+                
+                # Ensure camera is idle
+                status = ctypes.c_int(0)
+                asi_lib.ASIGetExpStatus(camera.camera_id, ctypes.byref(status))
+                if status.value != 0:
+                    asi_lib.ASIStopExposure(camera.camera_id)
+                    time.sleep(0.5)
+            
+            # Apply format if needed
+            photo_format = camera_state['image_format']
+            width = camera_state['width']
+            height = camera_state['height']
+            format_applied = False
+            
+            if photo_format != ASI_IMG_RGB24:
+                asi_lib.ASISetROIFormat(camera.camera_id, width, height, 1, photo_format)
+                format_applied = True
+            
+            # Capture
+            img = camera.capture_snapshot()
+            
+            # Restore format if needed
+            if was_streaming and format_applied:
+                asi_lib.ASISetROIFormat(camera.camera_id, width, height, 1, ASI_IMG_RGB24)
+                time.sleep(0.3)
+            
+            if was_streaming:
+                camera.start_stream()
+            
+            if img:
+                # Generate filename
+                sequence_state['current_count'] += 1
+                count = sequence_state['current_count']
+                total = sequence_state['total_count']
+                
+                date_formatter = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+                gain = camera_state['gain']
+                exposure = camera_state['exposure'] / 1000000.0  # Convert to seconds
+                
+                file_format = sequence_state['file_format'].lower()
+                if file_format == 'jpeg':
+                    file_format = 'jpg'
+                
+                filename = f"{date_formatter}_seq{count:04d}of{total:04d}_gain{gain}_exp{exposure:.3f}s.{file_format}"
+                filepath = os.path.join(sequence_state['save_path'], filename)
+                
+                # Save image
+                if sequence_state['file_format'] == 'JPEG':
+                    img.save(filepath, 'JPEG', quality=100)
+                elif sequence_state['file_format'] == 'PNG':
+                    img.save(filepath, 'PNG')
+                elif sequence_state['file_format'] == 'TIFF':
+                    img.save(filepath, 'TIFF')
+                
+                print(f"[Sequence] Saved photo {count}/{total}: {filename}")
+            else:
+                print(f"[Sequence] Failed to capture photo {sequence_state['current_count'] + 1}/{sequence_state['total_count']}")
+            
+            # Wait between photos (at least exposure time + some buffer)
+            exposure_ms = camera_state['exposure'] / 1000.0
+            wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
+            time.sleep(wait_time)
+            
+        except Exception as e:
+            print(f"[Sequence] Error during capture: {e}")
+            import traceback
+            traceback.print_exc()
+            time.sleep(1.0)
+    
+    print(f"[Sequence] Sequence capture stopped")
+    sequence_state['active'] = False
 
 # Global camera instance
 camera = ASICamera()
@@ -475,11 +748,69 @@ def snapshot():
             camera.stop_stream()
             time.sleep(0.5)
         
-        print(f"[Snapshot] Capturing with exposure: {camera_state['exposure']} μs ({camera_state['exposure']/1000000:.3f} s)")
+        # Apply image format for photo capture (video stream always uses RGB24)
+        photo_format = camera_state['image_format']
+        width = camera_state['width']
+        height = camera_state['height']
+        format_applied = False
+        
+        if photo_format != ASI_IMG_RGB24:
+            # Apply format for photo capture
+            result = asi_lib.ASISetROIFormat(camera.camera_id, width, height, 1, photo_format)
+            if result != ASI_SUCCESS:
+                error_names = {
+                    1: "ASI_ERROR_INVALID_INDEX",
+                    2: "ASI_ERROR_INVALID_ID", 
+                    3: "ASI_ERROR_INVALID_CONTROL_TYPE",
+                    4: "ASI_ERROR_CAMERA_CLOSED",
+                    5: "ASI_ERROR_CAMERA_REMOVED",
+                    9: "ASI_ERROR_INVALID_IMGTYPE",
+                    10: "ASI_ERROR_OUTOF_BOUNDARY",
+                    14: "ASI_ERROR_VIDEO_MODE_ACTIVE",
+                    15: "ASI_ERROR_EXPOSURE_IN_PROGRESS",
+                    16: "ASI_ERROR_GENERAL_ERROR"
+                }
+                error_name = error_names.get(result, f"UNKNOWN_ERROR_{result}")
+                error_msg = f"Failed to set ROI format: {result} ({error_name})"
+                print(f"[Snapshot] Error: {error_msg}")
+                # Try to restore stream if it was running
+                if was_streaming:
+                    try:
+                        camera.start_stream()
+                    except:
+                        pass
+                return jsonify({'error': error_msg}), 500
+            format_applied = True
+            print(f"[Snapshot] Applied image format {photo_format} for photo capture")
+            # Wait for format to be applied
+            time.sleep(0.3)
+            
+            # Ensure camera is idle after format change
+            status = ctypes.c_int(0)
+            asi_lib.ASIGetExpStatus(camera.camera_id, ctypes.byref(status))
+            if status.value != 0:
+                print(f"[Snapshot] Camera not idle after format change (status: {status.value}), waiting...")
+                timeout = 0
+                while status.value != 0 and timeout < 3000:  # Wait up to 3 seconds
+                    time.sleep(0.1)
+                    asi_lib.ASIGetExpStatus(camera.camera_id, ctypes.byref(status))
+                    timeout += 100
+                if status.value != 0:
+                    print(f"[Snapshot] Warning: Camera still not idle after format change, forcing stop...")
+                    asi_lib.ASIStopExposure(camera.camera_id)
+                    time.sleep(0.5)
+        
+        print(f"[Snapshot] Capturing with exposure: {camera_state['exposure']} μs ({camera_state['exposure']/1000000:.3f} s), format: {photo_format}")
         img = camera.capture_snapshot()
         
-        # Resume streaming if it was active
+        # Restore RGB24 format if needed before resuming stream
         if was_streaming:
+            if format_applied:
+                # Restore RGB24 for video streaming
+                asi_lib.ASISetROIFormat(camera.camera_id, width, height, 1, ASI_IMG_RGB24)
+                print("[Snapshot] Restored RGB24 format for video streaming")
+                time.sleep(0.3)
+            
             print("[Snapshot] Resuming stream...")
             time.sleep(0.3)
             camera.start_stream()
@@ -606,15 +937,257 @@ def update_settings():
                 success = camera.start_stream()
                 print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
     
+    if 'image_format' in data:
+        format_map = {
+            'RGB24': ASI_IMG_RGB24,
+            'RAW8': ASI_IMG_RAW8,
+            'RAW16': ASI_IMG_RAW16,
+            'Y8': ASI_IMG_Y8
+        }
+        format_str = data['image_format']
+        if format_str in format_map:
+            new_format = format_map[format_str]
+            camera_state['image_format'] = new_format
+            print(f"[Settings] Set image format to {format_str} ({new_format})")
+            print(f"[Settings] Note: Image format only affects photo capture, video stream always uses RGB24")
+            updated.append(f"image_format={format_str}")
+            # Note: Image format is only applied when capturing photos, not for video streaming
+            # Video stream always uses RGB24 for real-time performance
+        else:
+            print(f"[Settings] Invalid image format: {format_str}")
+    
+    # Get current format name
+    format_names = {ASI_IMG_RGB24: 'RGB24', ASI_IMG_RAW8: 'RAW8', ASI_IMG_RAW16: 'RAW16', ASI_IMG_Y8: 'Y8'}
+    current_format_name = format_names.get(camera_state['image_format'], 'RGB24')
+    
     print(f"[Settings] Updated: {', '.join(updated) if updated else 'nothing'}")
-    print(f"[Settings] State now - Gain: {camera_state['gain']}, Photo Exposure: {camera_state['exposure']} μs, Video Exposure: {camera_state['video_exposure']} μs")
+    print(f"[Settings] State now - Gain: {camera_state['gain']}, Photo Exposure: {camera_state['exposure']} μs, Video Exposure: {camera_state['video_exposure']} μs, Format: {current_format_name}")
     
     return jsonify({
         'success': True,
         'gain': camera_state['gain'],
         'exposure': camera_state['exposure'],
-        'video_exposure': camera_state['video_exposure']
+        'video_exposure': camera_state['video_exposure'],
+        'image_format': current_format_name
     })
+
+@app.route('/camera/sequence/start', methods=['POST'])
+def start_sequence():
+    """Start sequence capture"""
+    from flask import request
+    import os
+    
+    data = request.get_json()
+    print(f"[Sequence Start] Received request data: {data}")
+    
+    if data is None:
+        print("[Sequence Start] Error: No JSON data received")
+        return jsonify({'error': 'No JSON data received'}), 400
+    
+    if sequence_state['active']:
+        print("[Sequence Start] Error: Sequence already in progress")
+        return jsonify({'error': 'Sequence capture already in progress'}), 400
+    
+    if 'save_path' not in data or 'count' not in data:
+        print(f"[Sequence Start] Error: Missing parameters. Received keys: {list(data.keys()) if data else 'None'}")
+        return jsonify({'error': 'Missing required parameters: save_path, count'}), 400
+    
+    save_path = data['save_path']
+    
+    # Validate save path is not empty
+    if not save_path or not save_path.strip():
+        print(f"[Sequence Start] Error: Empty save path")
+        return jsonify({'error': 'Save path cannot be empty'}), 400
+    
+    try:
+        count = int(data['count'])
+    except (ValueError, TypeError):
+        print(f"[Sequence Start] Error: Invalid count value: {data.get('count')}")
+        return jsonify({'error': f'Invalid count value: {data.get("count")}'}), 400
+    
+    file_format = data.get('file_format', 'JPEG')
+    
+    # Validate save path exists and is a directory
+    # Expand user path (~) if present
+    save_path = os.path.expanduser(save_path)
+    
+    if not os.path.exists(save_path):
+        print(f"[Sequence Start] Error: Save path does not exist: {save_path}")
+        return jsonify({'error': f'Save path does not exist on server: {save_path}. Please use a path on the Raspberry Pi.'}), 400
+    
+    if not os.path.isdir(save_path):
+        print(f"[Sequence Start] Error: Invalid save path (not a directory): {save_path}")
+        return jsonify({'error': f'Invalid save path (not a directory): {save_path}'}), 400
+    
+    # Check write permissions
+    if not os.access(save_path, os.W_OK):
+        print(f"[Sequence Start] Error: No write permission for path: {save_path}")
+        return jsonify({'error': f'No write permission for path: {save_path}'}), 400
+    
+    # Validate count
+    if count < 1 or count > 10000:
+        return jsonify({'error': 'Count must be between 1 and 10000'}), 400
+    
+    # Validate file format
+    if file_format not in ['JPEG', 'PNG', 'TIFF']:
+        return jsonify({'error': 'File format must be JPEG, PNG, or TIFF'}), 400
+    
+    # Check if camera is connected
+    if not camera_state['connected'] or not camera.is_open:
+        return jsonify({'error': 'Camera not connected'}), 500
+    
+    # Initialize sequence state
+    sequence_state['active'] = True
+    sequence_state['save_path'] = save_path
+    sequence_state['total_count'] = count
+    sequence_state['current_count'] = 0
+    sequence_state['file_format'] = file_format
+    
+    # Start sequence capture thread
+    sequence_state['thread'] = threading.Thread(target=sequence_capture_loop, daemon=True)
+    sequence_state['thread'].start()
+    
+    print(f"[Sequence] Started: {count} photos to {save_path}, format: {file_format}")
+    
+    return jsonify({
+        'success': True,
+        'message': f'Sequence capture started: {count} photos',
+        'save_path': save_path,
+        'count': count,
+        'file_format': file_format
+    })
+
+@app.route('/camera/sequence/stop', methods=['POST'])
+def stop_sequence():
+    """Stop sequence capture"""
+    if not sequence_state['active']:
+        return jsonify({'error': 'No sequence capture in progress'}), 400
+    
+    sequence_state['active'] = False
+    
+    # Wait for thread to finish
+    if sequence_state['thread']:
+        sequence_state['thread'].join(timeout=5.0)
+    
+    print(f"[Sequence] Stopped: {sequence_state['current_count']}/{sequence_state['total_count']} photos captured")
+    
+    return jsonify({
+        'success': True,
+        'message': 'Sequence capture stopped',
+        'captured': sequence_state['current_count'],
+        'total': sequence_state['total_count']
+    })
+
+@app.route('/camera/sequence/status', methods=['GET'])
+def sequence_status():
+    """Get sequence capture status"""
+    return jsonify({
+        'active': sequence_state['active'],
+        'current_count': sequence_state['current_count'],
+        'total_count': sequence_state['total_count'],
+        'save_path': sequence_state['save_path'],
+        'file_format': sequence_state['file_format']
+    })
+
+@app.route('/camera/sequence/capture', methods=['POST'])
+def capture_sequence():
+    """Capture a sequence of photos - simple: stop stream, take N photos, resume stream"""
+    from flask import request
+    import base64
+    
+    data = request.get_json()
+    
+    if not data or 'count' not in data:
+        return jsonify({'error': 'Missing count parameter'}), 400
+    
+    count = int(data.get('count', 1))
+    if count < 1 or count > 100:
+        return jsonify({'error': 'Count must be between 1 and 100'}), 400
+    
+    # Check if camera is connected
+    if not camera_state['connected'] or not camera.is_open:
+        return jsonify({'error': 'Camera not connected'}), 500
+    
+    # Remember if we were streaming
+    was_streaming = camera.streaming
+    
+    try:
+        # Stop stream if running
+        if was_streaming:
+            print(f"[Sequence Capture] Stopping stream for {count} photos...")
+            camera.stop_stream()
+            time.sleep(0.5)
+        
+        # Apply image format if needed
+        photo_format = camera_state['image_format']
+        width = camera_state['width']
+        height = camera_state['height']
+        format_applied = False
+        
+        if photo_format != ASI_IMG_RGB24:
+            asi_lib.ASISetROIFormat(camera.camera_id, width, height, 1, photo_format)
+            format_applied = True
+        
+        # Capture all photos
+        photos = []
+        print(f"[Sequence Capture] Capturing {count} photos...")
+        
+        for i in range(count):
+            print(f"[Sequence Capture] Photo {i+1}/{count}...")
+            img = camera.capture_snapshot()
+            
+            if img:
+                # Convert to JPEG bytes
+                img_io = io.BytesIO()
+                img.save(img_io, 'JPEG', quality=100)
+                img_io.seek(0)
+                img_bytes = img_io.read()
+                # Encode as base64 for JSON
+                img_base64 = base64.b64encode(img_bytes).decode('utf-8')
+                photos.append(img_base64)
+                
+                # Wait between photos (at least exposure time)
+                exposure_s = camera_state['exposure'] / 1000000.0
+                wait_time = max(exposure_s + 0.3, 0.5)
+                if i < count - 1:  # Don't wait after last photo
+                    time.sleep(wait_time)
+            else:
+                print(f"[Sequence Capture] Failed to capture photo {i+1}")
+                photos.append(None)
+        
+        # Restore format if needed
+        if was_streaming and format_applied:
+            asi_lib.ASISetROIFormat(camera.camera_id, width, height, 1, ASI_IMG_RGB24)
+            time.sleep(0.3)
+        
+        # Resume stream if it was running
+        if was_streaming:
+            print("[Sequence Capture] Resuming stream...")
+            time.sleep(0.5)
+            camera.start_stream()
+        
+        print(f"[Sequence Capture] Successfully captured {len([p for p in photos if p])}/{count} photos")
+        
+        return jsonify({
+            'success': True,
+            'count': len([p for p in photos if p]),
+            'photos': photos
+        })
+        
+    except Exception as e:
+        import traceback
+        error_details = traceback.format_exc()
+        print(f"[Sequence Capture] Exception: {e}")
+        print(f"[Sequence Capture] Traceback:\n{error_details}")
+        
+        # Try to resume stream if it was running
+        if was_streaming and not camera.streaming:
+            try:
+                camera.start_stream()
+            except:
+                pass
+        
+        return jsonify({'error': f'Exception: {str(e)}'}), 500
 
 if __name__ == '__main__':
     print("Starting ASI Camera Service...")
