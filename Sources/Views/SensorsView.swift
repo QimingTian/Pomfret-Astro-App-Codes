@@ -147,7 +147,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 HStack {
                     Text("Gain:")
                         .frame(width: 80, alignment: .leading)
-                    Slider(value: gain, in: 0...100, step: 1)
+                    Slider(value: gain, in: 0...600, step: 1)
                     Text("\(Int(gain.wrappedValue))")
                         .frame(width: 40, alignment: .trailing)
                         .monospacedDigit()
@@ -161,7 +161,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 HStack {
                     Text("Photo Exp:")
                         .frame(width: 80, alignment: .leading)
-                    Slider(value: photoExposure, in: 0.001...10.0, step: 0.001)
+                    Slider(value: photoExposure, in: 0.1...1000.0, step: 0.001)
                     Text(String(format: "%.3f s", photoExposure.wrappedValue))
                         .frame(width: 70, alignment: .trailing)
                         .monospacedDigit()
@@ -175,7 +175,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 HStack {
                     Text("Video Exp:")
                         .frame(width: 80, alignment: .leading)
-                    Slider(value: videoExposure, in: 0.010...1.0, step: 0.010)
+                    Slider(value: videoExposure, in: 0.001...0.1, step: 0.001)
                     Text(String(format: "%.3f s", videoExposure.wrappedValue))
                         .frame(width: 70, alignment: .trailing)
                         .monospacedDigit()

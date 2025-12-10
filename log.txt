@@ -1,0 +1,122 @@
+[Sequence Capture] Capturing 5 photos...
+[Sequence Capture] Photo 1/5...
+[capture_snapshot] Set exposure: 1000000 μs (1.000 s) (result: 0)
+[capture_snapshot] Set gain: 50 (result: 0)
+[capture_snapshot] Camera is idle, starting exposure...
+172.18.1.66 - - [06/Dec/2025 12:11:41] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Exposure failed with status: 3 (ASI_EXP_FAILED)
+[Sequence Capture] Failed to capture photo 1
+[Sequence Capture] Photo 2/5...
+[capture_snapshot] Camera not idle (status: 3 = ASI_EXP_FAILED), waiting...
+172.18.1.66 - - [06/Dec/2025 12:11:46] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 1000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 2000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 3000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 4000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 5000ms)
+172.18.1.66 - - [06/Dec/2025 12:11:51] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 6000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 7000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 8000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 9000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 10000ms)
+172.18.1.66 - - [06/Dec/2025 12:11:56] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 11000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 12000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 13000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 14000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 15000ms)
+[capture_snapshot] Camera still not idle after timeout, forcing stop...
+172.18.1.66 - - [06/Dec/2025 12:12:01] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Set exposure: 1000000 μs (1.000 s) (result: 0)
+[capture_snapshot] Set gain: 50 (result: 0)
+[capture_snapshot] Camera is idle, starting exposure...
+172.18.1.66 - - [06/Dec/2025 12:12:06] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Exposure failed with status: 3 (ASI_EXP_FAILED)
+[Sequence Capture] Failed to capture photo 2
+[Sequence Capture] Photo 3/5...
+[capture_snapshot] Camera not idle (status: 3 = ASI_EXP_FAILED), waiting...
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 1000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 2000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 3000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:11] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 4000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 5000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 6000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 7000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 8000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:16] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 9000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 10000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 11000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 12000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 13000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:21] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 14000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 15000ms)
+[capture_snapshot] Camera still not idle after timeout, forcing stop...
+[capture_snapshot] Set exposure: 1000000 μs (1.000 s) (result: 0)
+[capture_snapshot] Set gain: 50 (result: 0)
+[capture_snapshot] Camera is idle, starting exposure...
+172.18.1.66 - - [06/Dec/2025 12:12:26] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Exposure failed with status: 3 (ASI_EXP_FAILED)
+[Sequence Capture] Failed to capture photo 3
+[Sequence Capture] Photo 4/5...
+[capture_snapshot] Camera not idle (status: 3 = ASI_EXP_FAILED), waiting...
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 1000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:31] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 2000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 3000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 4000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 5000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 6000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:36] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 7000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 8000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 9000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 10000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:41] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 11000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 12000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 13000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 14000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 15000ms)
+[capture_snapshot] Camera still not idle after timeout, forcing stop...
+[capture_snapshot] Set exposure: 1000000 μs (1.000 s) (result: 0)
+[capture_snapshot] Set gain: 50 (result: 0)
+[capture_snapshot] Camera is idle, starting exposure...
+172.18.1.66 - - [06/Dec/2025 12:12:46] "GET /status HTTP/1.1" 200 -
+172.18.1.66 - - [06/Dec/2025 12:12:51] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Exposure failed with status: 3 (ASI_EXP_FAILED)
+[Sequence Capture] Failed to capture photo 4
+[Sequence Capture] Photo 5/5...
+[capture_snapshot] Camera not idle (status: 3 = ASI_EXP_FAILED), waiting...
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 1000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 2000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 3000ms)
+172.18.1.66 - - [06/Dec/2025 12:12:56] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 4000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 5000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 6000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 7000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 8000ms)
+172.18.1.66 - - [06/Dec/2025 12:13:01] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 9000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 10000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 11000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 12000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 13000ms)
+172.18.1.66 - - [06/Dec/2025 12:13:06] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 14000ms)
+[capture_snapshot] Still waiting... (status: 3 = ASI_EXP_FAILED, timeout: 15000ms)
+[capture_snapshot] Camera still not idle after timeout, forcing stop...
+[capture_snapshot] Set exposure: 1000000 μs (1.000 s) (result: 0)
+[capture_snapshot] Set gain: 50 (result: 0)
+[capture_snapshot] Camera is idle, starting exposure...
+172.18.1.66 - - [06/Dec/2025 12:13:11] "GET /status HTTP/1.1" 200 -
+[capture_snapshot] Exposure failed with status: 3 (ASI_EXP_FAILED)
+[Sequence Capture] Failed to capture photo 5
+[Sequence Capture] Successfully captured 0/5 photos
+172.18.1.66 - - [06/Dec/2025 12:13:14] "POST /camera/sequence/capture HTTP/1.1" 200 -
+172.18.1.66 - - [06/Dec/2025 12:13:16] "GET /status HTTP/1.1" 200 -
+172.18.1.66 - - [06/Dec/2025 12:13:21] "GET /status HTTP/1.1" 200 -
