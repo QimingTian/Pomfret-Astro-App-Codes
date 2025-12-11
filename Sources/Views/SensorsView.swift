@@ -622,7 +622,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
             VStack(alignment: .leading, spacing: 8) {
                 Text("Camera Settings").font(.subheadline).foregroundColor(.secondary)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("Gain:")
                         .frame(width: 80, alignment: .leading)
                     Slider(value: gain, in: 0...600, step: 1)
@@ -635,8 +635,9 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+                .frame(height: 22)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("Photo Exp:")
                         .frame(width: 80, alignment: .leading)
                     Slider(value: photoExposure, in: 0.01...1000.0, step: 0.001)
@@ -649,8 +650,9 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+                .frame(height: 22)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("Video Exp:")
                         .frame(width: 80, alignment: .leading)
                     Slider(value: videoExposure, in: 0.001...0.1, step: 0.001)
@@ -663,8 +665,9 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+                .frame(height: 22)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("Format:")
                         .frame(width: 80, alignment: .leading)
                     Picker(selection: imageFormat, label: EmptyView()) {
@@ -680,17 +683,20 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                 }
+                .frame(height: 22)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("WB Auto:")
                         .frame(width: 80, alignment: .leading)
                     Toggle("", isOn: wbAuto)
                         .onChange(of: wbAuto.wrappedValue) { newValue in
                             updateCameraSetting(controller: controller, wbAuto: newValue, appState: appState, streamRefreshID: streamRefreshID)
                         }
+                    Spacer()
                 }
+                .frame(height: 22)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("WB R:")
                         .frame(width: 80, alignment: .leading)
                     Slider(value: wbR, in: 0...100, step: 1)
@@ -706,8 +712,9 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .controlSize(.small)
                     .disabled(wbAuto.wrappedValue)
                 }
+                .frame(height: 22)
                 
-                HStack {
+                HStack(alignment: .center) {
                     Text("WB B:")
                         .frame(width: 80, alignment: .leading)
                     Slider(value: wbB, in: 0...100, step: 1)
@@ -723,6 +730,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .controlSize(.small)
                     .disabled(wbAuto.wrappedValue)
                 }
+                .frame(height: 22)
             }
             .disabled(!isControllerConnected)
             .padding(.vertical, 4)
