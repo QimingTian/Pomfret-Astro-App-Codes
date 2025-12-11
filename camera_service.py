@@ -163,6 +163,7 @@ class ASICamera:
         self.streaming = False
         self.frame_buffer = None
         self.capture_thread = None
+        self.is_color_cam = False  # Store whether camera is color camera
         
     def connect(self):
         """Connect to the first available ASI camera"""
@@ -209,6 +210,7 @@ class ASICamera:
                 return False
             
             self.camera_id = camera_info.CameraID
+            self.is_color_cam = bool(camera_info.IsColorCam)  # Store color camera status
             camera_state['camera_id'] = self.camera_id
             camera_state['width'] = camera_info.MaxWidth
             camera_state['height'] = camera_info.MaxHeight
@@ -381,7 +383,7 @@ class ASICamera:
         result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain, ASI_FALSE)
         
         # Set white balance (only for color cameras)
-        if camera_info.IsColorCam:
+        if self.is_color_cam:
             wb_auto = camera_state.get('wb_auto', False)
             if wb_auto:
                 # Set auto white balance
@@ -415,7 +417,7 @@ class ASICamera:
         asi_lib.ASIGetControlValue(self.camera_id, ASI_EXPOSURE, ctypes.byref(actual_exp), ctypes.byref(auto_exp))
         
         print(f"[start_stream] Set gain to {gain} (result: {result_gain}, actual: {actual_gain.value})")
-        if camera_info.IsColorCam:
+        if self.is_color_cam:
             wb_auto = camera_state.get('wb_auto', False)
             if wb_auto:
                 print(f"[start_stream] Set auto white balance (R result: {result_wb_r}, B result: {result_wb_b})")
