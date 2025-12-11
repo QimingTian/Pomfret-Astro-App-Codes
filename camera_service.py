@@ -355,12 +355,8 @@ class ASICamera:
         # Set gain first (must be set before starting video capture)
         result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain, ASI_FALSE)
         
-        # For Raspberry Pi/Linux: Try manual exposure first to ensure gain works
-        # Set manual exposure for video mode (disable auto exposure)
+        # Set manual exposure for video mode (we're in manual mode, so ASI_AUTO_MAX_EXP is not needed)
         result_manual = asi_lib.ASISetControlValue(self.camera_id, ASI_EXPOSURE, video_exposure, ASI_FALSE)
-        
-        # Also set ASI_AUTO_MAX_EXP as backup (in case we switch to auto later)
-        result_max_exp = asi_lib.ASISetControlValue(self.camera_id, ASI_AUTO_MAX_EXP, video_exposure, ASI_FALSE)
         
         # Try auto exposure for video mode (may not work well with gain on Linux)
         # Commented out for now - using manual exposure instead
@@ -379,7 +375,6 @@ class ASICamera:
         print(f"[start_stream] Set gain to {gain} (result: {result_gain}, actual: {actual_gain.value})")
         print(f"[start_stream] Set video exposure to {video_exposure} μs ({video_exposure/1000:.1f} ms)")
         print(f"[start_stream] Manual exposure result: {result_manual}, actual: {actual_exp.value} μs, auto: {auto_exp.value}")
-        print(f"[start_stream] ASI_AUTO_MAX_EXP result: {result_max_exp}")
         
         print(f"[start_stream] Starting video capture")
         
@@ -957,23 +952,16 @@ def update_settings():
                 time.sleep(0.5)
             
             # Set ASI_EXPOSURE directly (manual exposure mode for video)
+            # Set ASI_EXPOSURE directly as we are in manual exposure mode
+            # Note: ASI_AUTO_MAX_EXP is not needed in manual mode
             result_exp = asi_lib.ASISetControlValue(camera.camera_id, ASI_EXPOSURE, video_exposure_us, ASI_FALSE)
-            
-            # Also set ASI_AUTO_MAX_EXP as backup (in case we switch to auto later)
-            result_max_exp = asi_lib.ASISetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, video_exposure_us, ASI_FALSE)
             
             # Verify ASI_EXPOSURE was set
             actual_exp = ctypes.c_long(0)
             auto_exp = ctypes.c_int(0)
             asi_lib.ASIGetControlValue(camera.camera_id, ASI_EXPOSURE, ctypes.byref(actual_exp), ctypes.byref(auto_exp))
             
-            # Verify ASI_AUTO_MAX_EXP was set
-            actual_max_exp = ctypes.c_long(0)
-            auto_max_exp = ctypes.c_int(0)
-            asi_lib.ASIGetControlValue(camera.camera_id, ASI_AUTO_MAX_EXP, ctypes.byref(actual_max_exp), ctypes.byref(auto_max_exp))
-            
             print(f"[Settings] Set ASI_EXPOSURE to {video_exposure_us} μs (result: {result_exp}, actual: {actual_exp.value} μs, auto: {auto_exp.value})")
-            print(f"[Settings] Set ASI_AUTO_MAX_EXP to {video_exposure_us} μs (result: {result_max_exp}, actual: {actual_max_exp.value} μs)")
             
             # Restart stream if it was active
             if was_streaming:
