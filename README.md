@@ -8,21 +8,37 @@ macOS application for controlling the Pomfret School VISTA Observatory, includin
 **Release Date:** December 2025
 
 **Major Changes:**
+- **Time-Lapse Photography** - New interval-based sequence capture mode for time-lapse photography
+- **Significant FPS Improvements** - Video streaming frame rate dramatically increased (from 6-8 FPS to 20-30+ FPS)
 - **Enhanced Camera Controls** - Direct numerical input for all camera settings
 - **Extended Exposure Range** - Photo exposure range expanded to 0.01s - 1000s
 - **Fixed Video Exposure Control** - Video exposure now correctly affects both brightness and frame rate
 - **Code Optimization** - Removed redundant ASI_AUTO_MAX_EXP settings in manual exposure mode
 
 **New Features:**
+- **Time-Lapse Mode** - Sequence capture with configurable interval (0 = fast mode, >0 = time-lapse)
+  - Fast mode: Continuous capture with minimal delay
+  - Time-lapse mode: Capture photos at fixed intervals (e.g., every 30 seconds)
+  - All photos saved locally on Mac
+  - Local progress bar calculation based on exposure and interval
 - **Text Input Fields** - Direct numerical input for Gain, Photo Exposure, and Video Exposure (similar to Interval)
 - **Improved UI** - Cleaner interface with "Set" buttons for all settings
 - **Better Control** - All camera parameters now support both slider and text input for precise adjustments
+- **Local Progress Bars** - Smooth progress tracking for both single photo and sequence capture, calculated locally without server polling
+
+**Performance Improvements:**
+- **FPS Optimization** - Removed artificial frame rate limits:
+  - Video stream generation: sleep reduced from 100ms → 5ms (removed ~10 FPS limit)
+  - Capture loop: sleep reduced from 10ms → 1ms (reduced latency)
+  - Timeout minimum: reduced from 1000ms → 100ms (faster response)
+  - Frame rate now dynamically adjusts with video_exposure settings (1ms exposure ≈ 30+ FPS, 100ms exposure ≈ 10 FPS)
 
 **Technical Improvements:**
 - Fixed video_exposure update logic: now correctly sets ASI_EXPOSURE in manual mode
 - Removed unnecessary ASI_AUTO_MAX_EXP settings (only needed in auto exposure mode)
 - Simplified code by removing redundant parameter settings
 - Enhanced exposure control accuracy and responsiveness
+- Local progress calculation for better responsiveness and smoother UI updates
 
 **Bug Fixes:**
 - Fixed issue where video_exposure affected brightness but not frame rate
