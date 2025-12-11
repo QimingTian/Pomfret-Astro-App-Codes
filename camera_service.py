@@ -137,8 +137,9 @@ camera_state = {
     'exposure': 1000000,  # microseconds - for photo capture only
     'video_exposure': 100000,  # microseconds - max exposure for video streaming (controls frame rate)
     'gain': 50,
-    'wb_r': 50,  # White balance red channel (default, typical range 0-100)
-    'wb_b': 50,  # White balance blue channel (default, typical range 0-100)
+    'wb_r': 50,  # White balance red channel (default, range 1-100)
+    'wb_b': 50,  # White balance blue channel (default, range 1-100)
+    'wb_auto': False,  # Auto white balance enabled (default: manual)
     'image_format': ASI_IMG_RGB24,  # Default to RGB24
     'current_frame': None,
     'error': None
@@ -291,22 +292,24 @@ class ASICamera:
                         camera_state['wb_r_max'] = wb_r_caps.MaxValue
                         camera_state['wb_r_default'] = wb_r_caps.DefaultValue
                         camera_state['wb_r_auto_supported'] = bool(wb_r_caps.IsAutoSupported)
-                        # Clamp current value to valid range
-                        if camera_state['wb_r'] < wb_r_caps.MinValue:
-                            camera_state['wb_r'] = wb_r_caps.MinValue
-                        elif camera_state['wb_r'] > wb_r_caps.MaxValue:
-                            camera_state['wb_r'] = wb_r_caps.MaxValue
+                        # Clamp current value to valid range (only if not using auto)
+                        if not camera_state.get('wb_auto', False):
+                            if camera_state['wb_r'] < wb_r_caps.MinValue:
+                                camera_state['wb_r'] = wb_r_caps.MinValue
+                            elif camera_state['wb_r'] > wb_r_caps.MaxValue:
+                                camera_state['wb_r'] = wb_r_caps.MaxValue
                     
                     if wb_b_caps:
                         camera_state['wb_b_min'] = wb_b_caps.MinValue
                         camera_state['wb_b_max'] = wb_b_caps.MaxValue
                         camera_state['wb_b_default'] = wb_b_caps.DefaultValue
                         camera_state['wb_b_auto_supported'] = bool(wb_b_caps.IsAutoSupported)
-                        # Clamp current value to valid range
-                        if camera_state['wb_b'] < wb_b_caps.MinValue:
-                            camera_state['wb_b'] = wb_b_caps.MinValue
-                        elif camera_state['wb_b'] > wb_b_caps.MaxValue:
-                            camera_state['wb_b'] = wb_b_caps.MaxValue
+                        # Clamp current value to valid range (only if not using auto)
+                        if not camera_state.get('wb_auto', False):
+                            if camera_state['wb_b'] < wb_b_caps.MinValue:
+                                camera_state['wb_b'] = wb_b_caps.MinValue
+                            elif camera_state['wb_b'] > wb_b_caps.MaxValue:
+                                camera_state['wb_b'] = wb_b_caps.MaxValue
                     
                     if not wb_r_caps or not wb_b_caps:
                         print("\n⚠️ Warning: Could not find white balance controls")
@@ -355,8 +358,11 @@ class ASICamera:
             print(f"  Gain: {camera_state['gain']} → actual: {actual_gain.value} (result: {result_gain})")
             print(f"  Exposure (for photo): {camera_state['exposure']} μs ({camera_state['exposure']/1000000:.3f} s)")
             if camera_info.IsColorCam:
-                print(f"  White Balance R: {camera_state['wb_r']} (result: {result_wb_r})")
-                print(f"  White Balance B: {camera_state['wb_b']} (result: {result_wb_b})")
+                if wb_auto:
+                    print(f"  White Balance: Auto (R result: {result_wb_r}, B result: {result_wb_b})")
+                else:
+                    print(f"  White Balance R: {camera_state['wb_r']} (result: {result_wb_r})")
+                    print(f"  White Balance B: {camera_state['wb_b']} (result: {result_wb_b})")
             
             camera_state['connected'] = True
             camera_state['error'] = None
@@ -1076,57 +1082,99 @@ def update_settings():
             
             updated.append(f"video_exposure={video_exposure_us}us")
     
-    if 'wb_r' in data:
-        wb_r = int(data['wb_r'])
-        camera_state['wb_r'] = wb_r
-        print(f"[Settings] Setting white balance R: {wb_r}")
+    if 'wb_auto' in data:
+        wb_auto = bool(data['wb_auto'])
+        camera_state['wb_auto'] = wb_auto
+        print(f"[Settings] Setting white balance auto: {wb_auto}")
         
         if camera.is_open:
-            result_wb_r = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_R, wb_r, ASI_FALSE)
-            
-            # Verify it was set
-            actual_wb_r = ctypes.c_long(0)
-            auto_wb_r = ctypes.c_int(0)
-            asi_lib.ASIGetControlValue(camera.camera_id, ASI_WB_R, ctypes.byref(actual_wb_r), ctypes.byref(auto_wb_r))
-            
-            print(f"[Settings] Set white balance R to {wb_r} (result: {result_wb_r}, actual: {actual_wb_r.value})")
-            
-            # If streaming, restart to apply white balance
             was_streaming = camera_state['streaming']
             if was_streaming:
-                print(f"[Settings] Restarting stream to apply white balance R...")
+                print(f"[Settings] Stopping stream to apply white balance mode...")
                 camera.stop_stream()
+                time.sleep(0.5)
+            
+            if wb_auto:
+                # Enable auto white balance
+                result_wb_r = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_R, 0, ASI_TRUE)
+                result_wb_b = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_B, 0, ASI_TRUE)
+                print(f"[Settings] Enabled auto white balance (R result: {result_wb_r}, B result: {result_wb_b})")
+            else:
+                # Disable auto and set manual values
+                wb_r = camera_state.get('wb_r', 50)
+                wb_b = camera_state.get('wb_b', 50)
+                result_wb_r = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_R, wb_r, ASI_FALSE)
+                result_wb_b = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_B, wb_b, ASI_FALSE)
+                print(f"[Settings] Disabled auto white balance, set manual R: {wb_r}, B: {wb_b}")
+            
+            # Restart stream if it was active
+            if was_streaming:
+                print(f"[Settings] Restarting stream with new white balance mode...")
                 time.sleep(0.5)
                 success = camera.start_stream()
                 print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
             
-            updated.append(f"wb_r={wb_r}")
+            updated.append(f"wb_auto={wb_auto}")
+    
+    if 'wb_r' in data:
+        # Only set manual values if auto is disabled
+        if not camera_state.get('wb_auto', False):
+            wb_r = int(data['wb_r'])
+            camera_state['wb_r'] = wb_r
+            print(f"[Settings] Setting white balance R: {wb_r}")
+            
+            if camera.is_open:
+                result_wb_r = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_R, wb_r, ASI_FALSE)
+                
+                # Verify it was set
+                actual_wb_r = ctypes.c_long(0)
+                auto_wb_r = ctypes.c_int(0)
+                asi_lib.ASIGetControlValue(camera.camera_id, ASI_WB_R, ctypes.byref(actual_wb_r), ctypes.byref(auto_wb_r))
+                
+                print(f"[Settings] Set white balance R to {wb_r} (result: {result_wb_r}, actual: {actual_wb_r.value})")
+                
+                # If streaming, restart to apply white balance
+                was_streaming = camera_state['streaming']
+                if was_streaming:
+                    print(f"[Settings] Restarting stream to apply white balance R...")
+                    camera.stop_stream()
+                    time.sleep(0.5)
+                    success = camera.start_stream()
+                    print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+                
+                updated.append(f"wb_r={wb_r}")
+        else:
+            print(f"[Settings] Ignoring wb_r change: auto white balance is enabled")
     
     if 'wb_b' in data:
-        wb_b = int(data['wb_b'])
-        camera_state['wb_b'] = wb_b
-        print(f"[Settings] Setting white balance B: {wb_b}")
-        
-        if camera.is_open:
-            result_wb_b = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_B, wb_b, ASI_FALSE)
+        # Only set manual values if auto is disabled
+        if not camera_state.get('wb_auto', False):
+            wb_b = int(data['wb_b'])
+            camera_state['wb_b'] = wb_b
+            print(f"[Settings] Setting white balance B: {wb_b}")
             
-            # Verify it was set
-            actual_wb_b = ctypes.c_long(0)
-            auto_wb_b = ctypes.c_int(0)
-            asi_lib.ASIGetControlValue(camera.camera_id, ASI_WB_B, ctypes.byref(actual_wb_b), ctypes.byref(auto_wb_b))
-            
-            print(f"[Settings] Set white balance B to {wb_b} (result: {result_wb_b}, actual: {actual_wb_b.value})")
-            
-            # If streaming, restart to apply white balance
-            was_streaming = camera_state['streaming']
-            if was_streaming:
-                print(f"[Settings] Restarting stream to apply white balance B...")
-                camera.stop_stream()
-                time.sleep(0.5)
-                success = camera.start_stream()
-                print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
-            
-            updated.append(f"wb_b={wb_b}")
+            if camera.is_open:
+                result_wb_b = asi_lib.ASISetControlValue(camera.camera_id, ASI_WB_B, wb_b, ASI_FALSE)
+                
+                # Verify it was set
+                actual_wb_b = ctypes.c_long(0)
+                auto_wb_b = ctypes.c_int(0)
+                asi_lib.ASIGetControlValue(camera.camera_id, ASI_WB_B, ctypes.byref(actual_wb_b), ctypes.byref(auto_wb_b))
+                
+                print(f"[Settings] Set white balance B to {wb_b} (result: {result_wb_b}, actual: {actual_wb_b.value})")
+                
+                # If streaming, restart to apply white balance
+                was_streaming = camera_state['streaming']
+                if was_streaming:
+                    print(f"[Settings] Restarting stream to apply white balance B...")
+                    camera.stop_stream()
+                    time.sleep(0.5)
+                    success = camera.start_stream()
+                    print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+                
+                updated.append(f"wb_b={wb_b}")
+        else:
+            print(f"[Settings] Ignoring wb_b change: auto white balance is enabled")
     
     if 'image_format' in data:
         format_map = {

@@ -74,7 +74,7 @@ class APIClient: NSObject {
         try await postEmpty("/camera/stream/stop")
     }
     
-    func updateCameraSettings(gain: Int? = nil, photoExposure: Int? = nil, videoExposure: Int? = nil, imageFormat: String? = nil, wbR: Int? = nil, wbB: Int? = nil) async throws {
+    func updateCameraSettings(gain: Int? = nil, photoExposure: Int? = nil, videoExposure: Int? = nil, imageFormat: String? = nil, wbR: Int? = nil, wbB: Int? = nil, wbAuto: Bool? = nil) async throws {
         var params: [String: Any] = [:]
         if let gain = gain {
             params["gain"] = gain
@@ -93,6 +93,9 @@ class APIClient: NSObject {
         }
         if let wbB = wbB {
             params["wb_b"] = wbB
+        }
+        if let wbAuto = wbAuto {
+            params["wb_auto"] = wbAuto
         }
         
         var urlString = baseURL.trimmingCharacters(in: .whitespaces)
