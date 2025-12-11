@@ -74,7 +74,7 @@ class APIClient: NSObject {
         try await postEmpty("/camera/stream/stop")
     }
     
-    func updateCameraSettings(gain: Int? = nil, photoExposure: Int? = nil, videoExposure: Int? = nil, imageFormat: String? = nil, wbR: Int? = nil, wbB: Int? = nil, wbAuto: Bool? = nil) async throws {
+    func updateCameraSettings(gain: Int? = nil, photoExposure: Int? = nil, videoExposure: Int? = nil, imageFormat: String? = nil, gamma: Int? = nil, wbR: Int? = nil, wbB: Int? = nil, wbAuto: Bool? = nil) async throws {
         var params: [String: Any] = [:]
         if let gain = gain {
             params["gain"] = gain
@@ -87,6 +87,9 @@ class APIClient: NSObject {
         }
         if let format = imageFormat {
             params["image_format"] = format
+        }
+        if let gamma = gamma {
+            params["gamma"] = gamma
         }
         if let wbR = wbR {
             params["wb_r"] = wbR

@@ -137,6 +137,7 @@ camera_state = {
     'exposure': 1000000,  # microseconds - for photo capture only
     'video_exposure': 100000,  # microseconds - max exposure for video streaming (controls frame rate)
     'gain': 50,
+    'gamma': 50,  # Gamma (default, range 1-100, recommended 50 for linear output)
     'wb_r': 50,  # White balance red channel (default, range 0-100)
     'wb_b': 50,  # White balance blue channel (default, range 0-100)
     'wb_auto': False,  # Auto white balance enabled (default: manual)
@@ -257,6 +258,9 @@ class ASICamera:
             # Set initial gain
             result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, camera_state['gain'], ASI_FALSE)
             
+            # Set initial gamma
+            result_gamma = asi_lib.ASISetControlValue(self.camera_id, ASI_GAMMA, camera_state['gamma'], ASI_FALSE)
+            
             # Set initial white balance (only for color cameras)
             if camera_info.IsColorCam:
                 wb_auto = camera_state.get('wb_auto', False)
@@ -279,6 +283,7 @@ class ASICamera:
             
             print(f"Initial settings:")
             print(f"  Gain: {camera_state['gain']} → actual: {actual_gain.value} (result: {result_gain})")
+            print(f"  Gamma: {camera_state['gamma']} (result: {result_gamma})")
             print(f"  Exposure (for photo): {camera_state['exposure']} μs ({camera_state['exposure']/1000000:.3f} s)")
             if camera_info.IsColorCam:
                 wb_auto = camera_state.get('wb_auto', False)
@@ -382,6 +387,10 @@ class ASICamera:
         # Set gain first (must be set before starting video capture)
         result_gain = asi_lib.ASISetControlValue(self.camera_id, ASI_GAIN, gain, ASI_FALSE)
         
+        # Set gamma
+        gamma = camera_state.get('gamma', 50)
+        result_gamma = asi_lib.ASISetControlValue(self.camera_id, ASI_GAMMA, gamma, ASI_FALSE)
+        
         # Set white balance (only for color cameras)
         if self.is_color_cam:
             wb_auto = camera_state.get('wb_auto', False)
@@ -417,6 +426,7 @@ class ASICamera:
         asi_lib.ASIGetControlValue(self.camera_id, ASI_EXPOSURE, ctypes.byref(actual_exp), ctypes.byref(auto_exp))
         
         print(f"[start_stream] Set gain to {gain} (result: {result_gain}, actual: {actual_gain.value})")
+        print(f"[start_stream] Set gamma to {gamma} (result: {result_gamma})")
         if self.is_color_cam:
             wb_auto = camera_state.get('wb_auto', False)
             if wb_auto:
@@ -981,6 +991,34 @@ def update_settings():
                     print(f"[Settings] Gain updated successfully without stream restart")
             
             updated.append(f"gain={gain}")
+    
+    if 'gamma' in data:
+        gamma = int(data['gamma'])
+        # Clamp gamma to valid range (1-100)
+        gamma = max(1, min(100, gamma))
+        camera_state['gamma'] = gamma
+        print(f"[Settings] Setting gamma: {gamma}")
+        
+        if camera.is_open:
+            result_gamma = asi_lib.ASISetControlValue(camera.camera_id, ASI_GAMMA, gamma, ASI_FALSE)
+            
+            # Verify it was set
+            actual_gamma = ctypes.c_long(0)
+            auto_gamma = ctypes.c_int(0)
+            asi_lib.ASIGetControlValue(camera.camera_id, ASI_GAMMA, ctypes.byref(actual_gamma), ctypes.byref(auto_gamma))
+            
+            print(f"[Settings] Set gamma to {gamma} (result: {result_gamma}, actual: {actual_gamma.value})")
+            
+            # If streaming, restart to apply gamma
+            was_streaming = camera_state['streaming']
+            if was_streaming:
+                print(f"[Settings] Restarting stream to apply gamma...")
+                camera.stop_stream()
+                time.sleep(0.5)
+                success = camera.start_stream()
+                print(f"[Settings] Stream restart result: {success}, State: {camera_state['streaming']}")
+            
+            updated.append(f"gamma={gamma}")
     
     if 'photo_exposure' in data:
         exposure_us = int(data['photo_exposure'])

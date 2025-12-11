@@ -319,7 +319,7 @@ private func stopSequence(controller: ControllerState, appState: AppState, activ
     appState.addLog(level: .info, module: "camera", message: "Stopping sequence capture...", controller: controller)
 }
 
-private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, photoExposure: Double? = nil, videoExposure: Double? = nil, imageFormat: String? = nil, wbR: Int? = nil, wbB: Int? = nil, wbAuto: Bool? = nil, appState: AppState, streamRefreshID: Binding<UUID>? = nil) {
+private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, photoExposure: Double? = nil, videoExposure: Double? = nil, imageFormat: String? = nil, gamma: Int? = nil, wbR: Int? = nil, wbB: Int? = nil, wbAuto: Bool? = nil, appState: AppState, streamRefreshID: Binding<UUID>? = nil) {
     Task {
         do {
             guard let apiClient = controller.apiClient else { 
@@ -361,7 +361,7 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
                 appState.addLog(level: .info, module: "camera", message: "Sending white balance auto: \(wbAuto)", controller: controller)
             }
             
-            try await apiClient.updateCameraSettings(gain: gain, photoExposure: photoExpMicroseconds, videoExposure: videoExpMicroseconds, imageFormat: imageFormat, wbR: wbR, wbB: wbB, wbAuto: wbAuto)
+            try await apiClient.updateCameraSettings(gain: gain, photoExposure: photoExpMicroseconds, videoExposure: videoExpMicroseconds, imageFormat: imageFormat, gamma: gamma, wbR: wbR, wbB: wbB, wbAuto: wbAuto)
             
             if let g = gain {
                 appState.addLog(level: .info, module: "camera", message: "✓ Gain set to \(g)", controller: controller)
@@ -402,6 +402,22 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
                 appState.addLog(level: .info, module: "camera", message: "✓ Image format set to \(format) (only affects photo capture, not video stream)", controller: controller)
                 // Note: Image format only affects photo capture, not video streaming
                 // Video stream always uses RGB24 format for real-time performance
+            }
+            
+            if let gamma = gamma {
+                appState.addLog(level: .info, module: "camera", message: "✓ Gamma set to \(gamma)", controller: controller)
+                
+                // If was streaming, wait for stream to restart and force refresh stream view
+                if wasStreaming {
+                    try await Task.sleep(nanoseconds: 1_500_000_000) // 1.5 seconds
+                    controller.fetchStatus()
+                    
+                    await MainActor.run {
+                        streamRefreshID?.wrappedValue = UUID()
+                    }
+                    
+                    appState.addLog(level: .info, module: "camera", message: "Stream refreshed with new gamma", controller: controller)
+                }
             }
             
             if let wbR = wbR {
@@ -483,6 +499,7 @@ private struct CombinedCameraSection: View {
            @AppStorage("camera.photoExposure") private var photoExposure: Double = 1.0  // seconds - for photo capture
            @AppStorage("camera.videoExposure") private var videoExposure: Double = 0.1  // seconds - max exposure for video streaming (controls frame rate)
            @AppStorage("camera.imageFormat") private var imageFormat: String = "RGB24"  // Camera capture format
+           @AppStorage("camera.gamma") private var gamma: Double = 50  // Gamma (range 1-100, recommended 50)
            @AppStorage("camera.wbR") private var wbR: Double = 50  // White balance red channel (range 1-100)
            @AppStorage("camera.wbB") private var wbB: Double = 50  // White balance blue channel (range 1-100)
            @AppStorage("camera.wbAuto") private var wbAuto: Bool = false  // Auto white balance enabled
@@ -559,6 +576,7 @@ private struct CombinedCameraSection: View {
             sequenceStartTimeString: $sequenceStartTimeString,
             sequenceInterval: $sequenceInterval,
             photoExposureValue: photoExposure,
+            gamma: $gamma,
             wbR: $wbR,
             wbB: $wbB,
             wbAuto: $wbAuto
@@ -603,7 +621,7 @@ private struct CombinedCameraSection: View {
 }
 
 @ViewBuilder
-private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, videoExposure: Binding<Double>, imageFormat: Binding<String>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>, photoCaptureActive: Binding<Bool>, photoCaptureStartTime: Binding<String>, photoCaptureProgressTimer: Binding<Timer?>, photoCaptureProgressValue: Binding<Double>, sequenceSavePath: Binding<String>, sequenceBookmarkData: Binding<Data>, sequenceCount: Binding<Int>, sequenceFileFormat: Binding<String>, sequenceActive: Binding<Bool>, sequenceCurrentCount: Binding<Int>, sequenceTotalCount: Binding<Int>, sequenceProgressTimer: Binding<Timer?>, sequenceStartTimeString: Binding<String>, sequenceInterval: Binding<Double>, photoExposureValue: Double, wbR: Binding<Double>, wbB: Binding<Double>, wbAuto: Binding<Bool>) -> some View {
+private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, videoExposure: Binding<Double>, imageFormat: Binding<String>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>, photoCaptureActive: Binding<Bool>, photoCaptureStartTime: Binding<String>, photoCaptureProgressTimer: Binding<Timer?>, photoCaptureProgressValue: Binding<Double>, sequenceSavePath: Binding<String>, sequenceBookmarkData: Binding<Data>, sequenceCount: Binding<Int>, sequenceFileFormat: Binding<String>, sequenceActive: Binding<Bool>, sequenceCurrentCount: Binding<Int>, sequenceTotalCount: Binding<Int>, sequenceProgressTimer: Binding<Timer?>, sequenceStartTimeString: Binding<String>, sequenceInterval: Binding<Double>, photoExposureValue: Double, gamma: Binding<Double>, wbR: Binding<Double>, wbB: Binding<Double>, wbAuto: Binding<Bool>) -> some View {
     let isControllerConnected = appState.connectedControllers.contains(controller.id)
     
     SensorsPanel(title: title, icon: "camera.fill") {
@@ -631,6 +649,21 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                         .frame(width: 60)
                     Button("Set") {
                         updateCameraSetting(controller: controller, gain: Int(gain.wrappedValue), appState: appState, streamRefreshID: streamRefreshID)
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                }
+                .frame(height: 22)
+                
+                HStack(alignment: .center) {
+                    Text("Gamma:")
+                        .frame(width: 80, alignment: .leading)
+                    Slider(value: gamma, in: 1...100, step: 1)
+                    TextField("", value: gamma, format: .number)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 60)
+                    Button("Set") {
+                        updateCameraSetting(controller: controller, gamma: Int(gamma.wrappedValue), appState: appState, streamRefreshID: streamRefreshID)
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
