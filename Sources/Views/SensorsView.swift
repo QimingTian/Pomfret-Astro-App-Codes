@@ -684,14 +684,10 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 HStack {
                     Text("WB Auto:")
                         .frame(width: 80, alignment: .leading)
-                    HStack(alignment: .center, spacing: 8) {
-                        Toggle("", isOn: wbAuto)
-                        Button("Set") {
-                            updateCameraSetting(controller: controller, wbAuto: wbAuto.wrappedValue, appState: appState, streamRefreshID: streamRefreshID)
+                    Toggle("", isOn: wbAuto)
+                        .onChange(of: wbAuto.wrappedValue) { newValue in
+                            updateCameraSetting(controller: controller, wbAuto: newValue, appState: appState, streamRefreshID: streamRefreshID)
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                    }
                 }
                 
                 HStack {
