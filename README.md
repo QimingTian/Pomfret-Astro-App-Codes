@@ -4,6 +4,31 @@ macOS application for controlling the Pomfret School VISTA Observatory, includin
 
 ## Version History
 
+### Version 3.0
+**Release Date:** December 2025
+
+**Major Changes:**
+- **Enhanced Camera Controls** - Direct numerical input for all camera settings
+- **Extended Exposure Range** - Photo exposure range expanded to 0.01s - 1000s
+- **Fixed Video Exposure Control** - Video exposure now correctly affects both brightness and frame rate
+- **Code Optimization** - Removed redundant ASI_AUTO_MAX_EXP settings in manual exposure mode
+
+**New Features:**
+- **Text Input Fields** - Direct numerical input for Gain, Photo Exposure, and Video Exposure (similar to Interval)
+- **Improved UI** - Cleaner interface with "Set" buttons for all settings
+- **Better Control** - All camera parameters now support both slider and text input for precise adjustments
+
+**Technical Improvements:**
+- Fixed video_exposure update logic: now correctly sets ASI_EXPOSURE in manual mode
+- Removed unnecessary ASI_AUTO_MAX_EXP settings (only needed in auto exposure mode)
+- Simplified code by removing redundant parameter settings
+- Enhanced exposure control accuracy and responsiveness
+
+**Bug Fixes:**
+- Fixed issue where video_exposure affected brightness but not frame rate
+- Corrected manual exposure mode implementation
+- Improved gain and exposure control consistency
+
 ### Version 2.1
 **Release Date:** December 2025
 
