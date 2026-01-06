@@ -495,10 +495,10 @@ struct SensorsView: View {
 private struct CombinedCameraSection: View {
     @ObservedObject var controller: ControllerState
     @EnvironmentObject var appState: AppState
-           @AppStorage("camera.gain") private var gain: Double = 50
-           @AppStorage("camera.photoExposure") private var photoExposure: Double = 1.0  // seconds - for photo capture
-           @AppStorage("camera.videoExposure") private var videoExposure: Double = 0.1  // seconds - max exposure for video streaming (controls frame rate)
-           @AppStorage("camera.imageFormat") private var imageFormat: String = "RGB24"  // Camera capture format
+    @AppStorage("camera.gain") private var gain: Double = 50
+    @AppStorage("camera.photoExposure") private var photoExposure: Double = 1.0  // seconds - for photo capture
+    @AppStorage("camera.videoExposure") private var videoExposure: Double = 0.1  // seconds - max exposure for video streaming (controls frame rate)
+    @AppStorage("camera.imageFormat") private var imageFormat: String = "RGB24"  // Camera capture format
            @AppStorage("camera.gamma") private var gamma: Double = 50  // Gamma (range 1-100, recommended 50)
            @AppStorage("camera.wbR") private var wbR: Double = 50  // White balance red channel (range 1-100)
            @AppStorage("camera.wbB") private var wbB: Double = 50  // White balance blue channel (range 1-100)
@@ -547,7 +547,7 @@ private struct CombinedCameraSection: View {
     
     var body: some View {
         cameraCard(
-            title: "Weather & Meteor Monitor Camera",
+            title: "All Sky Camera",
             primaryCamera: controller.sensors.weatherCam,
             secondaryCamera: controller.sensors.meteorCam,
             controller: controller,
@@ -905,18 +905,18 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     }
                 }
             } else {
-            Rectangle()
-                .fill(Color.gray.opacity(0.2))
-                .frame(height: 200)
-                .cornerRadius(8)
-                .overlay {
-                    if !primaryCamera.connected {
-                        Text("Camera not connected").foregroundColor(.secondary)
+                Rectangle()
+                    .fill(Color.gray.opacity(0.2))
+                    .frame(height: 200)
+                    .cornerRadius(8)
+                    .overlay {
+                        if !primaryCamera.connected {
+                            Text("Camera not connected").foregroundColor(.secondary)
                         } else {
                             Text("Click 'Start Stream' to view live feed").foregroundColor(.secondary)
                         }
                     }
-                }
+            }
         }
     }
 }
@@ -1291,85 +1291,85 @@ private func startSequence(controller: ControllerState, appState: AppState, save
                     }
                 }
                 
-                for (index, photoBase64) in response.photos.enumerated() {
-                    // Check if stopped by user
-                    if !active.wrappedValue {
-                        appState.addLog(level: .info, module: "camera", message: "Sequence stopped by user", controller: controller)
-                        break
-                    }
-                    
-                    guard let photoBase64 = photoBase64 else {
-                        appState.addLog(level: .error, module: "camera", message: "Photo \(index + 1) is nil", controller: controller)
-                        continue
-                    }
-                    
-                    // Clean base64 string (remove data URL prefix if present)
-                    var cleanBase64 = photoBase64
-                    if let commaIndex = cleanBase64.firstIndex(of: ",") {
-                        cleanBase64 = String(cleanBase64[cleanBase64.index(after: commaIndex)...])
-                    }
-                    
-                    guard let imageData = Data(base64Encoded: cleanBase64, options: .ignoreUnknownCharacters),
-                          let image = NSImage(data: imageData) else {
-                        appState.addLog(level: .error, module: "camera", message: "Failed to decode photo \(index + 1). Base64 length: \(photoBase64.count)", controller: controller)
-                        continue
-                    }
-                    
-                    // Generate filename
-                    let filename = "\(baseTimestamp)_seq\(String(format: "%04d", index + 1))of\(String(format: "%04d", total))_gain\(currentGain)_exp\(String(format: "%.3f", exposure))s.\(fileExtension)"
-                    let fileURL = folderURL.appendingPathComponent(filename)
-                    
-                    // Convert and save image in desired format
-                    guard let tiffData = image.tiffRepresentation,
-                          let bitmapImage = NSBitmapImageRep(data: tiffData) else {
-                        appState.addLog(level: .error, module: "camera", message: "Failed to convert photo \(index + 1) to bitmap", controller: controller)
-                        continue
-                    }
-                    
-                    var finalData: Data?
-                    switch format.uppercased() {
-                    case "JPEG":
-                        finalData = bitmapImage.representation(using: .jpeg, properties: [.compressionFactor: 1.0])
-                    case "PNG":
-                        finalData = bitmapImage.representation(using: .png, properties: [:])
-                    case "TIFF":
-                        finalData = bitmapImage.representation(using: .tiff, properties: [:])
-                    default:
-                        finalData = bitmapImage.representation(using: .jpeg, properties: [.compressionFactor: 1.0])
-                    }
-                    
-                    guard let data = finalData else {
-                        appState.addLog(level: .error, module: "camera", message: "Failed to encode photo \(index + 1) as \(format)", controller: controller)
-                        continue
-                    }
-                    
-                    // Write file - security-scoped access for folder is already active
-                    do {
-                        try data.write(to: fileURL, options: .atomic)
-                        print("✅ Saved file: \(filename)")
-                        savedCount += 1
-                    } catch {
-                        let nsError = error as NSError
-                        appState.addLog(level: .error, module: "camera", message: "Failed to write file \(filename): \(error.localizedDescription) (domain: \(nsError.domain), code: \(nsError.code))", controller: controller)
-                        print("❌ Failed to write file: \(error), URL: \(fileURL.path)")
-                        continue
-                    }
-                    
-                    await MainActor.run {
-                        currentCount.wrappedValue = index + 1
-                    }
-                    
-                    appState.addLog(level: .info, module: "camera", message: "Saved photo \(index + 1)/\(total): \(filename)", controller: controller)
+            for (index, photoBase64) in response.photos.enumerated() {
+                // Check if stopped by user
+                if !active.wrappedValue {
+                    appState.addLog(level: .info, module: "camera", message: "Sequence stopped by user", controller: controller)
+                    break
+                }
+                
+                guard let photoBase64 = photoBase64 else {
+                    appState.addLog(level: .error, module: "camera", message: "Photo \(index + 1) is nil", controller: controller)
+                    continue
+                }
+                
+                // Clean base64 string (remove data URL prefix if present)
+                var cleanBase64 = photoBase64
+                if let commaIndex = cleanBase64.firstIndex(of: ",") {
+                    cleanBase64 = String(cleanBase64[cleanBase64.index(after: commaIndex)...])
+                }
+                
+                guard let imageData = Data(base64Encoded: cleanBase64, options: .ignoreUnknownCharacters),
+                      let image = NSImage(data: imageData) else {
+                    appState.addLog(level: .error, module: "camera", message: "Failed to decode photo \(index + 1). Base64 length: \(photoBase64.count)", controller: controller)
+                    continue
+                }
+                
+                // Generate filename
+                let filename = "\(baseTimestamp)_seq\(String(format: "%04d", index + 1))of\(String(format: "%04d", total))_gain\(currentGain)_exp\(String(format: "%.3f", exposure))s.\(fileExtension)"
+                let fileURL = folderURL.appendingPathComponent(filename)
+                
+                // Convert and save image in desired format
+                guard let tiffData = image.tiffRepresentation,
+                      let bitmapImage = NSBitmapImageRep(data: tiffData) else {
+                    appState.addLog(level: .error, module: "camera", message: "Failed to convert photo \(index + 1) to bitmap", controller: controller)
+                    continue
+                }
+                
+                var finalData: Data?
+                switch format.uppercased() {
+                case "JPEG":
+                    finalData = bitmapImage.representation(using: .jpeg, properties: [.compressionFactor: 1.0])
+                case "PNG":
+                    finalData = bitmapImage.representation(using: .png, properties: [:])
+                case "TIFF":
+                    finalData = bitmapImage.representation(using: .tiff, properties: [:])
+                default:
+                    finalData = bitmapImage.representation(using: .jpeg, properties: [.compressionFactor: 1.0])
+                }
+                
+                guard let data = finalData else {
+                    appState.addLog(level: .error, module: "camera", message: "Failed to encode photo \(index + 1) as \(format)", controller: controller)
+                    continue
+                }
+                
+                // Write file - security-scoped access for folder is already active
+                do {
+                    try data.write(to: fileURL, options: .atomic)
+                    print("✅ Saved file: \(filename)")
+                    savedCount += 1
+                } catch {
+                    let nsError = error as NSError
+                    appState.addLog(level: .error, module: "camera", message: "Failed to write file \(filename): \(error.localizedDescription) (domain: \(nsError.domain), code: \(nsError.code))", controller: controller)
+                    print("❌ Failed to write file: \(error), URL: \(fileURL.path)")
+                    continue
                 }
                 
                 await MainActor.run {
-                    progressTimer.wrappedValue?.invalidate()
-                    progressTimer.wrappedValue = nil
-                    startTimeString.wrappedValue = ""
-                    // Set final count
-                    currentCount.wrappedValue = savedCount
-                    active.wrappedValue = false
-                    if savedCount >= totalCount.wrappedValue {
+                    currentCount.wrappedValue = index + 1
+                }
+                
+                appState.addLog(level: .info, module: "camera", message: "Saved photo \(index + 1)/\(total): \(filename)", controller: controller)
+            }
+            
+            await MainActor.run {
+                progressTimer.wrappedValue?.invalidate()
+                progressTimer.wrappedValue = nil
+                startTimeString.wrappedValue = ""
+                // Set final count
+                currentCount.wrappedValue = savedCount
+                active.wrappedValue = false
+                if savedCount >= totalCount.wrappedValue {
                         appState.addLog(level: .info, module: "camera", message: "Sequence capture completed: \(savedCount)/\(total) photos", controller: controller)
                     }
                 }

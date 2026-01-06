@@ -181,6 +181,257 @@ class APIClient: NSObject {
         return data
     }
     
+    // MARK: - Bookings
+    
+    func fetchBookings() async throws -> [BookingResponse] {
+        var urlString = baseURL.trimmingCharacters(in: .whitespaces)
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://" + urlString
+        }
+        if urlString.hasSuffix("/") {
+            urlString = String(urlString.dropLast())
+        }
+        urlString += "/bookings"
+        
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("Pomfret Observatory/1.1 (macOS)", forHTTPHeaderField: "User-Agent")
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let (data, response) = try await urlSession.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        // Custom date decoder for ISO 8601 strings
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+            
+            // Try without fractional seconds
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+            
+            // Try with custom format
+            let customFormatter = DateFormatter()
+            customFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            if let date = customFormatter.date(from: dateString) {
+                return date
+            }
+            
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
+        }
+        return try decoder.decode([BookingResponse].self, from: data)
+    }
+    
+    func createBooking(_ booking: BookingRequest) async throws -> BookingResponse {
+        var urlString = baseURL.trimmingCharacters(in: .whitespaces)
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://" + urlString
+        }
+        if urlString.hasSuffix("/") {
+            urlString = String(urlString.dropLast())
+        }
+        urlString += "/bookings"
+        
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Pomfret Observatory/1.1 (macOS)", forHTTPHeaderField: "User-Agent")
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            let dateString = formatter.string(from: date)
+            var container = encoder.singleValueContainer()
+            try container.encode(dateString)
+        }
+        request.httpBody = try encoder.encode(booking)
+        
+        let (data, response) = try await urlSession.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        guard httpResponse.statusCode == 201 else {
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorData["error"] as? String {
+                throw APIError.httpErrorWithMessage(httpResponse.statusCode, error)
+            }
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+            
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+            
+            let customFormatter = DateFormatter()
+            customFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            if let date = customFormatter.date(from: dateString) {
+                return date
+            }
+            
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
+        }
+        return try decoder.decode(BookingResponse.self, from: data)
+    }
+    
+    func updateBooking(id: String, booking: BookingRequest) async throws -> BookingResponse {
+        var urlString = baseURL.trimmingCharacters(in: .whitespaces)
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://" + urlString
+        }
+        if urlString.hasSuffix("/") {
+            urlString = String(urlString.dropLast())
+        }
+        urlString += "/bookings/\(id)"
+        
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "PUT"
+        request.timeoutInterval = 30
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue("Pomfret Observatory/1.1 (macOS)", forHTTPHeaderField: "User-Agent")
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let encoder = JSONEncoder()
+        encoder.keyEncodingStrategy = .convertToSnakeCase
+        encoder.dateEncodingStrategy = .custom { date, encoder in
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime]
+            let dateString = formatter.string(from: date)
+            var container = encoder.singleValueContainer()
+            try container.encode(dateString)
+        }
+        request.httpBody = try encoder.encode(booking)
+        
+        let (data, response) = try await urlSession.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            if let errorData = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+               let error = errorData["error"] as? String {
+                throw APIError.httpErrorWithMessage(httpResponse.statusCode, error)
+            }
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+        
+        let decoder = JSONDecoder()
+        decoder.keyDecodingStrategy = .convertFromSnakeCase
+        decoder.dateDecodingStrategy = .custom { decoder in
+            let container = try decoder.singleValueContainer()
+            let dateString = try container.decode(String.self)
+            
+            let formatter = ISO8601DateFormatter()
+            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+            
+            formatter.formatOptions = [.withInternetDateTime]
+            if let date = formatter.date(from: dateString) {
+                return date
+            }
+            
+            let customFormatter = DateFormatter()
+            customFormatter.dateFormat = "yyyy-MM-dd'T'HH:mm:ss"
+            if let date = customFormatter.date(from: dateString) {
+                return date
+            }
+            
+            throw DecodingError.dataCorruptedError(in: container, debugDescription: "Invalid date format: \(dateString)")
+        }
+        return try decoder.decode(BookingResponse.self, from: data)
+    }
+    
+    func deleteBooking(id: String) async throws {
+        var urlString = baseURL.trimmingCharacters(in: .whitespaces)
+        if !urlString.hasPrefix("http://") && !urlString.hasPrefix("https://") {
+            urlString = "http://" + urlString
+        }
+        if urlString.hasSuffix("/") {
+            urlString = String(urlString.dropLast())
+        }
+        urlString += "/bookings/\(id)"
+        
+        guard let url = URL(string: urlString) else {
+            throw APIError.invalidURL
+        }
+        
+        var request = URLRequest(url: url)
+        request.httpMethod = "DELETE"
+        request.timeoutInterval = 30
+        request.setValue("Pomfret Observatory/1.1 (macOS)", forHTTPHeaderField: "User-Agent")
+        if let token = authToken {
+            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        }
+        
+        let (_, response) = try await urlSession.data(for: request)
+        
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw APIError.invalidResponse
+        }
+        
+        guard httpResponse.statusCode == 200 else {
+            throw APIError.httpError(httpResponse.statusCode)
+        }
+    }
+    
     // MARK: - Sequence Capture
     
     struct SequenceStatus: Codable {
@@ -496,6 +747,38 @@ enum APIError: LocalizedError {
         case .decodingError:
             return "Failed to decode response"
         }
+    }
+}
+
+// MARK: - Booking Models
+
+struct BookingRequest: Codable {
+    let userName: String
+    let startTime: Date
+    let endTime: Date
+    let notes: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case userName = "user_name"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case notes
+    }
+}
+
+struct BookingResponse: Codable, Identifiable {
+    let id: String
+    let userName: String
+    let startTime: Date
+    let endTime: Date
+    let notes: String?
+    
+    enum CodingKeys: String, CodingKey {
+        case id
+        case userName = "user_name"
+        case startTime = "start_time"
+        case endTime = "end_time"
+        case notes
     }
 }
 

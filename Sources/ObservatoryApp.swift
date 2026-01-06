@@ -35,10 +35,6 @@ struct ObservatoryApp: App {
 				.keyboardShortcut("f", modifiers: [.command, .control])
 			}
 		}
-		MenuBarExtra("Observatory", systemImage: MenuBarPresenter.iconName(for: appState)) {
-			MenuBarPresenter.MenuContent()
-				.environmentObject(appState)
-		}
 	}
 	
 	func toggleFullScreen() {

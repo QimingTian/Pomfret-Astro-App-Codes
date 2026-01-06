@@ -51,6 +51,10 @@ final class AppState: ObservableObject {
         controllers.filter { $0.roles.contains(role) }
     }
     
+    var camerasController: ControllerState? {
+        controller(for: .cameras)
+    }
+    
     func controller(for role: ControllerRole) -> ControllerState? {
         if let id = activeControllerIDs[role],
            let controller = controllers.first(where: { $0.id == id && $0.roles.contains(role) }) {
@@ -58,8 +62,6 @@ final class AppState: ObservableObject {
         }
         return controllers.first(where: { $0.roles.contains(role) })
     }
-    
-    var camerasController: ControllerState? { controller(for: .cameras) }
     
     func setActiveController(_ role: ControllerRole, controllerID: UUID) {
         guard controllers.contains(where: { $0.id == controllerID && $0.roles.contains(role) }) else { return }

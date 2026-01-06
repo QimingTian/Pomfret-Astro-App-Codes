@@ -11,7 +11,7 @@ System Requirements:
 - libusb-1.0 (via apt)
 """
 
-from flask import Flask, Response, jsonify, send_file
+from flask import Flask, Response, jsonify, send_file, request
 from flask_cors import CORS
 import ctypes
 import numpy as np
@@ -22,6 +22,8 @@ import threading
 import os
 import platform
 from datetime import datetime
+import json
+from uuid import uuid4
 
 app = Flask(__name__)
 CORS(app)
@@ -746,8 +748,8 @@ def sequence_capture_loop():
                 print(f"[Sequence] Waiting {wait_time} seconds until next photo (time-lapse mode)")
             else:
                 # Fast mode: at least exposure time + some buffer
-                exposure_ms = camera_state['exposure'] / 1000.0
-                wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
+            exposure_ms = camera_state['exposure'] / 1000.0
+            wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
                 print(f"[Sequence] Waiting {wait_time:.2f} seconds until next photo (fast mode)")
             time.sleep(wait_time)
             
@@ -991,7 +993,7 @@ def update_settings():
                     print(f"[Settings] Gain updated successfully without stream restart")
             
             updated.append(f"gain={gain}")
-    
+            
     if 'gamma' in data:
         gamma = int(data['gamma'])
         # Clamp gamma to valid range (1-100)
@@ -1316,6 +1318,137 @@ def sequence_status():
         'file_format': sequence_state['file_format'],
         'interval': sequence_state.get('interval', 0)
     })
+
+# Bookings storage (simple JSON file-based storage)
+BOOKINGS_FILE = 'bookings.json'
+bookings_lock = threading.Lock()
+
+def load_bookings():
+    """Load bookings from JSON file"""
+    if os.path.exists(BOOKINGS_FILE):
+        try:
+            with open(BOOKINGS_FILE, 'r') as f:
+                return json.load(f)
+        except:
+            return []
+    return []
+
+def save_bookings(bookings):
+    """Save bookings to JSON file"""
+    with bookings_lock:
+        with open(BOOKINGS_FILE, 'w') as f:
+            json.dump(bookings, f, indent=2, default=str)
+
+# Booking API Routes
+@app.route('/bookings', methods=['GET'])
+def get_bookings():
+    """Get all bookings"""
+    bookings = load_bookings()
+    return jsonify(bookings)
+
+@app.route('/bookings', methods=['POST'])
+def create_booking():
+    """Create a new booking"""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'Invalid request'}), 400
+    
+    required_fields = ['user_name', 'start_time', 'end_time']
+    for field in required_fields:
+        if field not in data:
+            return jsonify({'error': f'Missing required field: {field}'}), 400
+    
+    # Parse dates
+    try:
+        start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+        end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
+    except:
+        return jsonify({'error': 'Invalid date format. Use ISO 8601 format (YYYY-MM-DDTHH:MM:SS)'}), 400
+    
+    if end_time <= start_time:
+        return jsonify({'error': 'End time must be after start time'}), 400
+    
+    # Check for overlaps
+    bookings = load_bookings()
+    new_booking = {
+        'id': str(uuid4()),
+        'user_name': data['user_name'],
+        'start_time': data['start_time'],
+        'end_time': data['end_time'],
+        'notes': data.get('notes')
+    }
+    
+    # Check overlaps
+    for booking in bookings:
+        existing_start = datetime.fromisoformat(booking['start_time'].replace('Z', '+00:00'))
+        existing_end = datetime.fromisoformat(booking['end_time'].replace('Z', '+00:00'))
+        if start_time < existing_end and end_time > existing_start:
+            return jsonify({'error': 'Booking overlaps with existing booking'}), 409
+    
+    bookings.append(new_booking)
+    save_bookings(bookings)
+    return jsonify(new_booking), 201
+
+@app.route('/bookings/<booking_id>', methods=['PUT'])
+def update_booking(booking_id):
+    """Update an existing booking"""
+    data = request.get_json()
+    
+    if not data:
+        return jsonify({'error': 'Invalid request'}), 400
+    
+    bookings = load_bookings()
+    booking_index = None
+    for i, booking in enumerate(bookings):
+        if booking['id'] == booking_id:
+            booking_index = i
+            break
+    
+    if booking_index is None:
+        return jsonify({'error': 'Booking not found'}), 404
+    
+    # Parse dates
+    try:
+        start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
+        end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
+    except:
+        return jsonify({'error': 'Invalid date format. Use ISO 8601 format (YYYY-MM-DDTHH:MM:SS)'}), 400
+    
+    if end_time <= start_time:
+        return jsonify({'error': 'End time must be after start time'}), 400
+    
+    # Check for overlaps (excluding self)
+    for booking in bookings:
+        if booking['id'] == booking_id:
+            continue
+        existing_start = datetime.fromisoformat(booking['start_time'].replace('Z', '+00:00'))
+        existing_end = datetime.fromisoformat(booking['end_time'].replace('Z', '+00:00'))
+        if start_time < existing_end and end_time > existing_start:
+            return jsonify({'error': 'Booking overlaps with existing booking'}), 409
+    
+    # Update booking
+    bookings[booking_index].update({
+        'user_name': data.get('user_name', bookings[booking_index]['user_name']),
+        'start_time': data['start_time'],
+        'end_time': data['end_time'],
+        'notes': data.get('notes', bookings[booking_index].get('notes'))
+    })
+    save_bookings(bookings)
+    return jsonify(bookings[booking_index])
+
+@app.route('/bookings/<booking_id>', methods=['DELETE'])
+def delete_booking(booking_id):
+    """Delete a booking"""
+    bookings = load_bookings()
+    original_count = len(bookings)
+    bookings = [b for b in bookings if b['id'] != booking_id]
+    
+    if len(bookings) == original_count:
+        return jsonify({'error': 'Booking not found'}), 404
+    
+    save_bookings(bookings)
+    return jsonify({'success': True})
 
 @app.route('/camera/sequence/capture', methods=['POST'])
 def capture_sequence():

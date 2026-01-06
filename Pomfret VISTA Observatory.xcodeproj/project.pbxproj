@@ -7,9 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		0BB220D82F0CB82C006EBA8D /* CalendarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB220D72F0CB82C006EBA8D /* CalendarView.swift */; };
+		0BB220DA2F0CB84F006EBA8D /* Booking.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BB220D92F0CB84F006EBA8D /* Booking.swift */; };
 		0BC746182EDFC1D900860A77 /* MJPEGStreamView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BC746172EDFC1D900860A77 /* MJPEGStreamView.swift */; };
 		0BD7526A2ECA9F23004EEF35 /* LogsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD7525F2ECA9F23004EEF35 /* LogsView.swift */; };
-		0BD7526B2ECA9F23004EEF35 /* MenuBarPresenter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD752672ECA9F23004EEF35 /* MenuBarPresenter.swift */; };
 		0BD7526C2ECA9F23004EEF35 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD752622ECA9F23004EEF35 /* SettingsView.swift */; };
 		0BD7526D2ECA9F23004EEF35 /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD752652ECA9F23004EEF35 /* AppState.swift */; };
 		0BD7526E2ECA9F23004EEF35 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0BD7525E2ECA9F23004EEF35 /* LoginView.swift */; };
@@ -25,6 +26,8 @@
 /* End PBXBuildFile section */
 
 /* Begin PBXFileReference section */
+		0BB220D72F0CB82C006EBA8D /* CalendarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CalendarView.swift; sourceTree = "<group>"; };
+		0BB220D92F0CB84F006EBA8D /* Booking.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Booking.swift; sourceTree = "<group>"; };
 		0BC2AD662ECA607B00E323EF /* Pomfret Astro.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Pomfret Astro.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		0BC746172EDFC1D900860A77 /* MJPEGStreamView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MJPEGStreamView.swift; sourceTree = "<group>"; };
 		0BD7525B2ECA9F23004EEF35 /* StatusBadge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StatusBadge.swift; sourceTree = "<group>"; };
@@ -35,7 +38,6 @@
 		0BD752642ECA9F23004EEF35 /* APIClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIClient.swift; sourceTree = "<group>"; };
 		0BD752652ECA9F23004EEF35 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		0BD752662ECA9F23004EEF35 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
-		0BD752672ECA9F23004EEF35 /* MenuBarPresenter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarPresenter.swift; sourceTree = "<group>"; };
 		0BD752682ECA9F23004EEF35 /* ObservatoryApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ObservatoryApp.swift; sourceTree = "<group>"; };
 		0BD7527C2ECAA815004EEF35 /* assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = assets.xcassets; sourceTree = "<group>"; };
 		0BD7527F2ECE2069004EEF35 /* ControllerState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ControllerState.swift; sourceTree = "<group>"; };
@@ -89,6 +91,7 @@
 				0BD7525E2ECA9F23004EEF35 /* LoginView.swift */,
 				0BD7525F2ECA9F23004EEF35 /* LogsView.swift */,
 				0BD758012ED057D500123456 /* WeatherView.swift */,
+				0BB220D72F0CB82C006EBA8D /* CalendarView.swift */,
 				0BD752612ECA9F23004EEF35 /* SensorsView.swift */,
 				0BD752622ECA9F23004EEF35 /* SettingsView.swift */,
 			);
@@ -103,7 +106,6 @@
 				0BD752642ECA9F23004EEF35 /* APIClient.swift */,
 				0BD752652ECA9F23004EEF35 /* AppState.swift */,
 				0BD752662ECA9F23004EEF35 /* ContentView.swift */,
-				0BD752672ECA9F23004EEF35 /* MenuBarPresenter.swift */,
 				0BD752682ECA9F23004EEF35 /* ObservatoryApp.swift */,
 			);
 			path = Sources;
@@ -112,6 +114,7 @@
 		0BD7527E2ECE203E004EEF35 /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				0BB220D92F0CB84F006EBA8D /* Booking.swift */,
 				0BD7527F2ECE2069004EEF35 /* ControllerState.swift */,
 				0BD752812ECE27C9004EEF35 /* WeatherClient.swift */,
 			);
@@ -191,10 +194,11 @@
 			buildActionMask = 2147483647;
 			files = (
 				0BD7526A2ECA9F23004EEF35 /* LogsView.swift in Sources */,
-				0BD7526B2ECA9F23004EEF35 /* MenuBarPresenter.swift in Sources */,
+				0BB220DA2F0CB84F006EBA8D /* Booking.swift in Sources */,
 				0BD7526C2ECA9F23004EEF35 /* SettingsView.swift in Sources */,
 				0BD7526D2ECA9F23004EEF35 /* AppState.swift in Sources */,
 				0BD7526E2ECA9F23004EEF35 /* LoginView.swift in Sources */,
+				0BB220D82F0CB82C006EBA8D /* CalendarView.swift in Sources */,
 				0BD752702ECA9F23004EEF35 /* ObservatoryApp.swift in Sources */,
 				0BD752712ECA9F23004EEF35 /* ContentView.swift in Sources */,
 				0BD752732ECA9F23004EEF35 /* StatusBadge.swift in Sources */,

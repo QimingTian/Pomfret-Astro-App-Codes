@@ -12,6 +12,9 @@ struct ContentView: View {
 				NavigationLink(value: AppSection.weather) {
 					Label("Weather", systemImage: "cloud.sun")
 				}
+				NavigationLink(value: AppSection.calendar) {
+					Label("Calendar", systemImage: "calendar")
+				}
 				NavigationLink(value: AppSection.logs) {
 					Label("Logs", systemImage: "list.bullet.rectangle")
 				}
@@ -24,6 +27,7 @@ struct ContentView: View {
 			switch appState.selection {
 			case .sensors: SensorsView()
 			case .weather: WeatherView()
+			case .calendar: CalendarView()
 			case .logs: LogsView()
 			case .settings: SettingsView()
 			}
@@ -32,6 +36,6 @@ struct ContentView: View {
 }
 
 enum AppSection: Hashable {
-	case sensors, weather, logs, settings
+	case sensors, weather, calendar, logs, settings
 }
 
