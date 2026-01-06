@@ -748,8 +748,8 @@ def sequence_capture_loop():
                 print(f"[Sequence] Waiting {wait_time} seconds until next photo (time-lapse mode)")
             else:
                 # Fast mode: at least exposure time + some buffer
-            exposure_ms = camera_state['exposure'] / 1000.0
-            wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
+                exposure_ms = camera_state['exposure'] / 1000.0
+                wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
                 print(f"[Sequence] Waiting {wait_time:.2f} seconds until next photo (fast mode)")
             time.sleep(wait_time)
             
