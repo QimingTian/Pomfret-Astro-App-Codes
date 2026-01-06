@@ -11,7 +11,7 @@ System Requirements:
 - libusb-1.0 (via apt)
 """
 
-from flask import Flask, Response, jsonify, send_file, request
+from flask import Flask, Response, jsonify, send_file
 from flask_cors import CORS
 import ctypes
 import numpy as np
@@ -22,8 +22,6 @@ import threading
 import os
 import platform
 from datetime import datetime
-import json
-from uuid import uuid4
 
 app = Flask(__name__)
 CORS(app)
@@ -748,8 +746,8 @@ def sequence_capture_loop():
                 print(f"[Sequence] Waiting {wait_time} seconds until next photo (time-lapse mode)")
             else:
                 # Fast mode: at least exposure time + some buffer
-                exposure_ms = camera_state['exposure'] / 1000.0
-                wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
+            exposure_ms = camera_state['exposure'] / 1000.0
+            wait_time = max(exposure_ms / 1000.0 + 0.5, 1.0)  # At least 1 second between photos
                 print(f"[Sequence] Waiting {wait_time:.2f} seconds until next photo (fast mode)")
             time.sleep(wait_time)
             
@@ -1319,137 +1317,6 @@ def sequence_status():
         'interval': sequence_state.get('interval', 0)
     })
 
-# Bookings storage (simple JSON file-based storage)
-BOOKINGS_FILE = 'bookings.json'
-bookings_lock = threading.Lock()
-
-def load_bookings():
-    """Load bookings from JSON file"""
-    if os.path.exists(BOOKINGS_FILE):
-        try:
-            with open(BOOKINGS_FILE, 'r') as f:
-                return json.load(f)
-        except:
-            return []
-    return []
-
-def save_bookings(bookings):
-    """Save bookings to JSON file"""
-    with bookings_lock:
-        with open(BOOKINGS_FILE, 'w') as f:
-            json.dump(bookings, f, indent=2, default=str)
-
-# Booking API Routes
-@app.route('/bookings', methods=['GET'])
-def get_bookings():
-    """Get all bookings"""
-    bookings = load_bookings()
-    return jsonify(bookings)
-
-@app.route('/bookings', methods=['POST'])
-def create_booking():
-    """Create a new booking"""
-    data = request.get_json()
-    
-    if not data:
-        return jsonify({'error': 'Invalid request'}), 400
-    
-    required_fields = ['user_name', 'start_time', 'end_time']
-    for field in required_fields:
-        if field not in data:
-            return jsonify({'error': f'Missing required field: {field}'}), 400
-    
-    # Parse dates
-    try:
-        start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
-        end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
-    except:
-        return jsonify({'error': 'Invalid date format. Use ISO 8601 format (YYYY-MM-DDTHH:MM:SS)'}), 400
-    
-    if end_time <= start_time:
-        return jsonify({'error': 'End time must be after start time'}), 400
-    
-    # Check for overlaps
-    bookings = load_bookings()
-    new_booking = {
-        'id': str(uuid4()),
-        'user_name': data['user_name'],
-        'start_time': data['start_time'],
-        'end_time': data['end_time'],
-        'notes': data.get('notes')
-    }
-    
-    # Check overlaps
-    for booking in bookings:
-        existing_start = datetime.fromisoformat(booking['start_time'].replace('Z', '+00:00'))
-        existing_end = datetime.fromisoformat(booking['end_time'].replace('Z', '+00:00'))
-        if start_time < existing_end and end_time > existing_start:
-            return jsonify({'error': 'Booking overlaps with existing booking'}), 409
-    
-    bookings.append(new_booking)
-    save_bookings(bookings)
-    return jsonify(new_booking), 201
-
-@app.route('/bookings/<booking_id>', methods=['PUT'])
-def update_booking(booking_id):
-    """Update an existing booking"""
-    data = request.get_json()
-    
-    if not data:
-        return jsonify({'error': 'Invalid request'}), 400
-    
-    bookings = load_bookings()
-    booking_index = None
-    for i, booking in enumerate(bookings):
-        if booking['id'] == booking_id:
-            booking_index = i
-            break
-    
-    if booking_index is None:
-        return jsonify({'error': 'Booking not found'}), 404
-    
-    # Parse dates
-    try:
-        start_time = datetime.fromisoformat(data['start_time'].replace('Z', '+00:00'))
-        end_time = datetime.fromisoformat(data['end_time'].replace('Z', '+00:00'))
-    except:
-        return jsonify({'error': 'Invalid date format. Use ISO 8601 format (YYYY-MM-DDTHH:MM:SS)'}), 400
-    
-    if end_time <= start_time:
-        return jsonify({'error': 'End time must be after start time'}), 400
-    
-    # Check for overlaps (excluding self)
-    for booking in bookings:
-        if booking['id'] == booking_id:
-            continue
-        existing_start = datetime.fromisoformat(booking['start_time'].replace('Z', '+00:00'))
-        existing_end = datetime.fromisoformat(booking['end_time'].replace('Z', '+00:00'))
-        if start_time < existing_end and end_time > existing_start:
-            return jsonify({'error': 'Booking overlaps with existing booking'}), 409
-    
-    # Update booking
-    bookings[booking_index].update({
-        'user_name': data.get('user_name', bookings[booking_index]['user_name']),
-        'start_time': data['start_time'],
-        'end_time': data['end_time'],
-        'notes': data.get('notes', bookings[booking_index].get('notes'))
-    })
-    save_bookings(bookings)
-    return jsonify(bookings[booking_index])
-
-@app.route('/bookings/<booking_id>', methods=['DELETE'])
-def delete_booking(booking_id):
-    """Delete a booking"""
-    bookings = load_bookings()
-    original_count = len(bookings)
-    bookings = [b for b in bookings if b['id'] != booking_id]
-    
-    if len(bookings) == original_count:
-        return jsonify({'error': 'Booking not found'}), 404
-    
-    save_bookings(bookings)
-    return jsonify({'success': True})
-
 @app.route('/camera/sequence/capture', methods=['POST'])
 def capture_sequence():
     """Capture a sequence of photos - simple: stop stream, take N photos, resume stream"""
@@ -1551,51 +1418,15 @@ def capture_sequence():
         return jsonify({'error': f'Exception: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    print("=" * 60)
     print("Starting ASI Camera Service...")
-    print("=" * 60)
+    print("Attempting to connect to camera...")
     
-    # Check if Flask is available
-    try:
-        import flask
-        print(f"Flask version: {flask.__version__}")
-    except ImportError:
-        print("ERROR: Flask is not installed!")
-        print("Please install Flask: pip3 install flask flask-cors")
-        exit(1)
-    
-    # Check if required libraries are available
-    try:
-        import numpy
-        from PIL import Image
-        print("Required libraries loaded successfully")
-    except ImportError as e:
-        print(f"ERROR: Missing required library: {e}")
-        print("Please install: pip3 install numpy pillow")
-        exit(1)
-    
-    # Attempt to connect to camera
-    print("\nAttempting to connect to camera...")
     if camera.connect():
-        print("✓ Camera connected successfully!")
+        print("Camera connected successfully!")
     else:
-        print(f"⚠ Failed to connect to camera: {camera_state['error']}")
+        print(f"Failed to connect to camera: {camera_state['error']}")
         print("Service will start anyway, you can try connecting via API")
     
-    # Start Flask server
-    print("\n" + "=" * 60)
     print("Starting HTTP server on port 8080...")
-    print("Server will be accessible at: http://0.0.0.0:8080")
-    print("Press CTRL+C to stop the server")
-    print("=" * 60 + "\n")
-    
-    try:
-        app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False)
-    except KeyboardInterrupt:
-        print("\n\nServer stopped by user")
-    except Exception as e:
-        print(f"\n\nERROR: Failed to start server: {e}")
-        import traceback
-        traceback.print_exc()
-        exit(1)
+    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
 
