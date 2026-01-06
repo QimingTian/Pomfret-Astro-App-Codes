@@ -1551,15 +1551,51 @@ def capture_sequence():
         return jsonify({'error': f'Exception: {str(e)}'}), 500
 
 if __name__ == '__main__':
+    print("=" * 60)
     print("Starting ASI Camera Service...")
-    print("Attempting to connect to camera...")
+    print("=" * 60)
     
+    # Check if Flask is available
+    try:
+        import flask
+        print(f"Flask version: {flask.__version__}")
+    except ImportError:
+        print("ERROR: Flask is not installed!")
+        print("Please install Flask: pip3 install flask flask-cors")
+        exit(1)
+    
+    # Check if required libraries are available
+    try:
+        import numpy
+        from PIL import Image
+        print("Required libraries loaded successfully")
+    except ImportError as e:
+        print(f"ERROR: Missing required library: {e}")
+        print("Please install: pip3 install numpy pillow")
+        exit(1)
+    
+    # Attempt to connect to camera
+    print("\nAttempting to connect to camera...")
     if camera.connect():
-        print("Camera connected successfully!")
+        print("✓ Camera connected successfully!")
     else:
-        print(f"Failed to connect to camera: {camera_state['error']}")
+        print(f"⚠ Failed to connect to camera: {camera_state['error']}")
         print("Service will start anyway, you can try connecting via API")
     
+    # Start Flask server
+    print("\n" + "=" * 60)
     print("Starting HTTP server on port 8080...")
-    app.run(host='0.0.0.0', port=8080, debug=False, threaded=True)
+    print("Server will be accessible at: http://0.0.0.0:8080")
+    print("Press CTRL+C to stop the server")
+    print("=" * 60 + "\n")
+    
+    try:
+        app.run(host='0.0.0.0', port=8080, debug=False, threaded=True, use_reloader=False)
+    except KeyboardInterrupt:
+        print("\n\nServer stopped by user")
+    except Exception as e:
+        print(f"\n\nERROR: Failed to start server: {e}")
+        import traceback
+        traceback.print_exc()
+        exit(1)
 
