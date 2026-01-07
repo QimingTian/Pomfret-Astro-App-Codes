@@ -991,7 +991,7 @@ def update_settings():
                     print(f"[Settings] Gain updated successfully without stream restart")
             
             updated.append(f"gain={gain}")
-            
+    
     if 'gamma' in data:
         gamma = int(data['gamma'])
         # Clamp gamma to valid range (1-100)
