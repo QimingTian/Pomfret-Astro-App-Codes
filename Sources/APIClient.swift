@@ -702,8 +702,7 @@ struct StatusResponse: Codable {
 struct SensorsStateResponse: Codable {
     let temperature: Double?
     let humidity: Double?
-    let weatherCam: CameraStateResponse
-    let meteorCam: CameraStateResponse
+    let allSkyCam: CameraStateResponse
 }
 
 struct CameraStateResponse: Codable {

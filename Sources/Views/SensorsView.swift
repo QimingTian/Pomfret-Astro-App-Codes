@@ -329,7 +329,7 @@ private func updateCameraSetting(controller: ControllerState, gain: Int? = nil, 
             
             var photoExpMicroseconds: Int?
             var videoExpMicroseconds: Int?
-            let wasStreaming = controller.sensors.weatherCam.streaming || controller.sensors.meteorCam.streaming
+            let wasStreaming = controller.sensors.allSkyCam.streaming
             
             if let exp = photoExposure {
                 photoExpMicroseconds = Int(exp * 1_000_000)
@@ -548,8 +548,7 @@ private struct CombinedCameraSection: View {
     var body: some View {
         cameraCard(
             title: "All Sky Camera",
-            primaryCamera: controller.sensors.weatherCam,
-            secondaryCamera: controller.sensors.meteorCam,
+            camera: controller.sensors.allSkyCam,
             controller: controller,
             appState: appState,
             gain: $gain,
@@ -621,18 +620,18 @@ private struct CombinedCameraSection: View {
 }
 
 @ViewBuilder
-private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secondaryCamera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, videoExposure: Binding<Double>, imageFormat: Binding<String>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>, photoCaptureActive: Binding<Bool>, photoCaptureStartTime: Binding<String>, photoCaptureProgressTimer: Binding<Timer?>, photoCaptureProgressValue: Binding<Double>, sequenceSavePath: Binding<String>, sequenceBookmarkData: Binding<Data>, sequenceCount: Binding<Int>, sequenceFileFormat: Binding<String>, sequenceActive: Binding<Bool>, sequenceCurrentCount: Binding<Int>, sequenceTotalCount: Binding<Int>, sequenceProgressTimer: Binding<Timer?>, sequenceStartTimeString: Binding<String>, sequenceInterval: Binding<Double>, photoExposureValue: Double, gamma: Binding<Double>, wbR: Binding<Double>, wbB: Binding<Double>, wbAuto: Binding<Bool>) -> some View {
+private func cameraCard(title: String, camera: SensorsModel.Camera, controller: ControllerState, appState: AppState, gain: Binding<Double>, photoExposure: Binding<Double>, videoExposure: Binding<Double>, imageFormat: Binding<String>, capturedImage: Binding<NSImage?>, capturedGain: Binding<Int>, capturedExposure: Binding<Double>, showingPhotoViewer: Binding<Bool>, streamRefreshID: Binding<UUID>, photoCaptureActive: Binding<Bool>, photoCaptureStartTime: Binding<String>, photoCaptureProgressTimer: Binding<Timer?>, photoCaptureProgressValue: Binding<Double>, sequenceSavePath: Binding<String>, sequenceBookmarkData: Binding<Data>, sequenceCount: Binding<Int>, sequenceFileFormat: Binding<String>, sequenceActive: Binding<Bool>, sequenceCurrentCount: Binding<Int>, sequenceTotalCount: Binding<Int>, sequenceProgressTimer: Binding<Timer?>, sequenceStartTimeString: Binding<String>, sequenceInterval: Binding<Double>, photoExposureValue: Double, gamma: Binding<Double>, wbR: Binding<Double>, wbB: Binding<Double>, wbAuto: Binding<Bool>) -> some View {
     let isControllerConnected = appState.connectedControllers.contains(controller.id)
     
     SensorsPanel(title: title, icon: "camera.fill") {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
-                StatusBadge(text: primaryCamera.connected ? "Connected" : "Disconnected", status: primaryCamera.connected ? .ok : .error)
-                if primaryCamera.streaming || secondaryCamera.streaming {
+                StatusBadge(text: camera.connected ? "Connected" : "Disconnected", status: camera.connected ? .ok : .error)
+                if camera.streaming {
                     StatusBadge(text: "Streaming", status: .caution)
                 }
             }
-            if let lastSnap = primaryCamera.lastSnapshot ?? secondaryCamera.lastSnapshot {
+            if let lastSnap = camera.lastSnapshot {
                 Text("Last snapshot: \(lastSnap, style: .relative)").font(.caption).foregroundColor(.secondary)
             }
             
@@ -772,19 +771,19 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                 Button("Start Stream") {
                     startStream(controller: controller, appState: appState)
                 }
-                .disabled(!isControllerConnected || !primaryCamera.connected || primaryCamera.streaming)
+                .disabled(!isControllerConnected || !camera.connected || camera.streaming)
                 
                 Button("Stop Stream") {
                     stopStream(controller: controller, appState: appState)
                 }
-                .disabled(!isControllerConnected || !primaryCamera.streaming)
+                .disabled(!isControllerConnected || !camera.streaming)
                 
                 Button(action: {
                     capturePhoto(controller: controller, appState: appState, gain: gain, photoExposure: photoExposure, capturedImage: capturedImage, capturedGain: capturedGain, capturedExposure: capturedExposure, showingPhotoViewer: showingPhotoViewer, streamRefreshID: streamRefreshID, active: photoCaptureActive, startTime: photoCaptureStartTime, progressTimer: photoCaptureProgressTimer, progressValue: photoCaptureProgressValue)
                 }) {
                     Label("Capture Photo", systemImage: "camera")
                 }
-                .disabled(!isControllerConnected || !primaryCamera.connected || photoCaptureActive.wrappedValue)
+                .disabled(!isControllerConnected || !camera.connected || photoCaptureActive.wrappedValue)
                 .buttonStyle(.borderedProminent)
                 
                 if photoCaptureActive.wrappedValue {
@@ -865,7 +864,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     }) {
                         Label("Start Sequence", systemImage: "play.fill")
                     }
-                    .disabled(!isControllerConnected || !primaryCamera.connected || sequenceActive.wrappedValue || sequenceSavePath.wrappedValue.isEmpty)
+                    .disabled(!isControllerConnected || !camera.connected || sequenceActive.wrappedValue || sequenceSavePath.wrappedValue.isEmpty)
                     .buttonStyle(.borderedProminent)
                     
                     Button(action: {
@@ -879,7 +878,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
             }
             .disabled(!isControllerConnected)
             .padding(.vertical, 4)
-            if primaryCamera.streaming {
+            if camera.streaming {
                 ZStack {
                     MJPEGStreamView(url: "\(controller.baseURL)/camera/stream")
                         .frame(height: 500)
@@ -910,7 +909,7 @@ private func cameraCard(title: String, primaryCamera: SensorsModel.Camera, secon
                     .frame(height: 200)
                     .cornerRadius(8)
                     .overlay {
-                        if !primaryCamera.connected {
+                        if !camera.connected {
                             Text("Camera not connected").foregroundColor(.secondary)
                         } else {
                             Text("Click 'Start Stream' to view live feed").foregroundColor(.secondary)

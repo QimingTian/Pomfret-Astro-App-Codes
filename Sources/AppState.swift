@@ -242,8 +242,7 @@ final class AppState: ObservableObject {
         cameraController.sensors = SensorsModel(
             temperature: 18.5,
             humidity: 65,
-            weatherCam: .init(connected: true, streaming: false, lastSnapshot: Date()),
-            meteorCam: .init(connected: true, streaming: true, lastSnapshot: Date())
+            allSkyCam: .init(connected: true, streaming: false, lastSnapshot: Date())
         )
         let state = AppState(initialControllers: [cameraController])
         state.weather = WeatherModel(
@@ -269,8 +268,7 @@ struct SensorsModel {
         var lastSnapshot: Date? = nil
         var fault: String? = nil
     }
-    var weatherCam: Camera = Camera()
-    var meteorCam: Camera = Camera()
+    var allSkyCam: Camera = Camera()
 }
 
 struct LogEntry: Identifiable {

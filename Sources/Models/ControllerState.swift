@@ -97,12 +97,9 @@ final class ControllerState: ObservableObject, Identifiable {
         if let sensorsStatus = status.sensors {
             sensors.temperature = sensorsStatus.temperature
             sensors.humidity = sensorsStatus.humidity
-            sensors.weatherCam.connected = sensorsStatus.weatherCam.connected
-            sensors.weatherCam.streaming = sensorsStatus.weatherCam.streaming
-            sensors.weatherCam.fault = sensorsStatus.weatherCam.fault
-            sensors.meteorCam.connected = sensorsStatus.meteorCam.connected
-            sensors.meteorCam.streaming = sensorsStatus.meteorCam.streaming
-            sensors.meteorCam.fault = sensorsStatus.meteorCam.fault
+            sensors.allSkyCam.connected = sensorsStatus.allSkyCam.connected
+            sensors.allSkyCam.streaming = sensorsStatus.allSkyCam.streaming
+            sensors.allSkyCam.fault = sensorsStatus.allSkyCam.fault
         }
         
         if let alerts = status.alerts {

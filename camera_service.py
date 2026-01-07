@@ -775,13 +775,7 @@ def get_status():
         'sensors': {
             'temperature': None,  # This controller doesn't have environment sensors
             'humidity': None,     # This controller doesn't have environment sensors
-            'weatherCam': {
-                'connected': camera_state['connected'],
-                'streaming': camera_state['streaming'],
-                'lastSnapshot': datetime.now().isoformat() if camera_state['current_frame'] else None,
-                'fault': camera_state['error']
-            },
-            'meteorCam': {
+            'allSkyCam': {
                 'connected': camera_state['connected'],
                 'streaming': camera_state['streaming'],
                 'lastSnapshot': datetime.now().isoformat() if camera_state['current_frame'] else None,
