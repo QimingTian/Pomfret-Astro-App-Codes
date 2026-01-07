@@ -26,7 +26,7 @@ struct ControllerConfig: Identifiable, Codable {
         ControllerConfig(
             id: UUID(),
             name: "Camera Controller",
-            baseURL: "http://localhost:8080",
+            baseURL: "http://172.18.3.44:8080",
             authToken: nil,
             roles: [.cameras]
         )
